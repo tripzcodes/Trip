@@ -15,6 +15,8 @@ struct GuiState {
     bool show_cascade_debug = false;
     bool frustum_culling = true;
     bool occlusion_culling = false;
+    bool taa_enabled = false;
+    float taa_sharpness = 0.0f;
     int shadow_mode = 1; // 0=None, 1=Fixed, 2=Cascaded
 
     // post-process

@@ -92,6 +92,10 @@ void Gui::begin_frame(Scene& scene, uint32_t draw_calls, uint32_t culled_objects
     ImGui::Checkbox("Wireframe", &state_.wireframe);
     ImGui::Checkbox("Frustum Culling", &state_.frustum_culling);
     ImGui::Checkbox("Occlusion Culling", &state_.occlusion_culling);
+    ImGui::Checkbox("TAA", &state_.taa_enabled);
+    if (state_.taa_enabled) {
+        ImGui::SliderFloat("TAA Sharpness", &state_.taa_sharpness, 0.0f, 1.0f);
+    }
 
     const char* shadow_modes[] = { "None", "Fixed", "Cascaded" };
     ImGui::Combo("Shadows", &state_.shadow_mode, shadow_modes, 3);

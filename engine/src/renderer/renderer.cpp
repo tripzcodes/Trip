@@ -164,6 +164,8 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         swapchain.extent().width, swapchain.extent().height,
         gbuffer_->depth_view(), gbuffer_->sampler(), shader_dir);
 
+    gpu_culling_ = std::make_unique<GpuCulling>(context, allocator, 10000, shader_dir);
+
     taa_ = std::make_unique<TAAPass>(context, allocator,
         swapchain.extent().width, swapchain.extent().height,
         lighting_->hdr_view(), lighting_->hdr_sampler(),
@@ -577,7 +579,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
     ld.camera_forward = glm::vec4(camera.front(), 0.0f);
     lighting_->update(current_frame_, ld);
 
-    // begin geometry render pass
+    // common state
     std::array<VkClearValue, 4> clear_values{};
     clear_values[0].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
     clear_values[1].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
@@ -593,23 +595,12 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
     rp_info.clearValueCount = static_cast<uint32_t>(clear_values.size());
     rp_info.pClearValues = clear_values.data();
 
-    vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
-
-    auto& active_pipeline = wireframe ? *geom_wire_pipeline_ : *geom_fill_pipeline_;
-    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
-
-    VkDescriptorSet ds = descriptors_->set(current_frame_);
-    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
-                            0, 1, &ds, 0, nullptr);
-
-    // frustum culling — use unjittered VP to avoid popping
     Frustum frustum;
     frustum.extract(proj_unjittered * view);
 
     draw_calls = 0;
     culled_objects = 0;
 
-    // batch key: mesh + material descriptor set
     struct BatchKey {
         Mesh* mesh;
         VkDescriptorSet mat_set;
@@ -625,111 +616,195 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             return h;
         }
     };
-    std::unordered_map<BatchKey, std::vector<InstanceData>, BatchKeyHash> batches;
 
     VkDescriptorSet default_mat_set = default_texture_->descriptor_set();
     glm::vec3 cam_pos = camera.position();
 
-    auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
-    for (auto entity : renderable_view) {
-        auto& mesh_comp = renderable_view.get<MeshComponent>(entity);
+    if (gpu_culling && gpu_culling_) {
+        // === GPU-DRIVEN PATH ===
+        std::unordered_map<BatchKey, uint32_t, BatchKeyHash> group_map;
+        std::vector<GpuCulling::GroupInfo> groups;
+        std::vector<GpuEntity> entities;
 
-        glm::mat4 world = scene_->world_transform(entity);
+        auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
+        for (auto entity : renderable_view) {
+            auto& mesh_comp = renderable_view.get<MeshComponent>(entity);
+            glm::mat4 world = scene_->world_transform(entity);
 
-        // frustum + occlusion cull
-        if (scene_->registry().all_of<BoundsComponent>(entity)) {
-            auto& bounds = scene_->registry().get<BoundsComponent>(entity);
-            auto world_bounds = bounds.transformed(world);
-
-            if (frustum_culling && !frustum.test_aabb(world_bounds.min, world_bounds.max)) {
-                culled_objects++;
-                continue;
+            Mesh* draw_mesh = mesh_comp.mesh.get();
+            if (scene_->registry().all_of<LODComponent>(entity)) {
+                auto& lod = scene_->registry().get<LODComponent>(entity);
+                float dist = glm::length(cam_pos - glm::vec3(world[3]));
+                draw_mesh = lod.select(dist);
+                if (!draw_mesh) continue;
             }
 
-            if (occlusion_culling && hiz_ && hiz_->has_data() &&
-                !hiz_->test_aabb(world_bounds.min, world_bounds.max, prev_view_proj_)) {
+            VkDescriptorSet mat_set = default_mat_set;
+            glm::vec4 albedo(1.0f);
+            glm::vec4 mat_data(0.0f);
+            if (scene_->registry().all_of<MaterialComponent>(entity)) {
+                auto& mat = scene_->registry().get<MaterialComponent>(entity);
+                albedo = glm::vec4(mat.albedo, 1.0f);
+                mat_data = glm::vec4(mat.metallic, mat.roughness, 0.0f, 0.0f);
+                if (mat.texture_set != VK_NULL_HANDLE) mat_set = mat.texture_set;
+            }
+
+            BatchKey key{draw_mesh, mat_set};
+            if (group_map.find(key) == group_map.end()) {
+                uint32_t gid = static_cast<uint32_t>(groups.size());
+                group_map[key] = gid;
+                groups.push_back({draw_mesh, mat_set, draw_mesh->index_count(), 0});
+            }
+            groups[group_map[key]].max_instances++;
+
+            GpuEntity ge{};
+            ge.model = world;
+            ge.albedo = albedo;
+            ge.material = mat_data;
+            ge.group_id = group_map[key];
+
+            if (scene_->registry().all_of<BoundsComponent>(entity)) {
+                auto wb = scene_->registry().get<BoundsComponent>(entity).transformed(world);
+                ge.aabb_min = glm::vec4(wb.min, 0.0f);
+                ge.aabb_max = glm::vec4(wb.max, 0.0f);
+            } else {
+                ge.aabb_min = glm::vec4(-1e10f);
+                ge.aabb_max = glm::vec4(1e10f);
+            }
+
+            entities.push_back(ge);
+        }
+
+        // CPU-side frustum count for display (mirrors what the GPU does)
+        for (const auto& ge : entities) {
+            if (!frustum.test_aabb(glm::vec3(ge.aabb_min), glm::vec3(ge.aabb_max))) {
                 culled_objects++;
-                continue;
             }
         }
 
-        // LOD selection
-        Mesh* draw_mesh = mesh_comp.mesh.get();
-        if (scene_->registry().all_of<LODComponent>(entity)) {
-            auto& lod = scene_->registry().get<LODComponent>(entity);
-            glm::vec3 entity_pos = glm::vec3(world[3]);
-            float dist = glm::length(cam_pos - entity_pos);
-            draw_mesh = lod.select(dist);
-            if (!draw_mesh) {
-                culled_objects++;
-                continue;
-            }
-        }
+        gpu_culling_->upload(entities, groups, frustum, current_frame_);
+        gpu_culling_->dispatch(cmd, static_cast<uint32_t>(entities.size()), current_frame_);
 
-        InstanceData inst{};
-        inst.model = world;
-        inst.albedo = glm::vec4(1.0f);
+        vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        VkDescriptorSet mat_set = default_mat_set;
-        if (scene_->registry().all_of<MaterialComponent>(entity)) {
-            auto& mat = scene_->registry().get<MaterialComponent>(entity);
-            inst.albedo = glm::vec4(mat.albedo, 1.0f);
-            inst.material = glm::vec4(mat.metallic, mat.roughness, 0.0f, 0.0f);
-            if (mat.texture_set != VK_NULL_HANDLE) {
-                mat_set = mat.texture_set;
-            }
-        }
+        auto& inst_pipeline = wireframe ? *instanced_wire_pipeline_ : *instanced_fill_pipeline_;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.handle());
 
-        batches[{draw_mesh, mat_set}].push_back(inst);
-    }
+        VkDescriptorSet ds = descriptors_->set(current_frame_);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
+                                0, 1, &ds, 0, nullptr);
 
-    // draw batches — reset instance buffer so each batch gets its own section
-    instance_buffer_->reset();
+        gpu_culling_->bind_output_instances(cmd);
 
-    for (auto& [key, instances] : batches) {
-        // bind material texture (set 1)
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
-                                1, 1, &key.mat_set, 0, nullptr);
+        for (uint32_t g = 0; g < gpu_culling_->group_count(); g++) {
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
+                                    1, 1, &groups[g].mat_set, 0, nullptr);
+            groups[g].mesh->bind(cmd);
 
-        if (instances.size() == 1) {
-            struct PushData { glm::mat4 model; glm::vec4 albedo; glm::vec4 material; };
-            PushData push{};
-            push.model = instances[0].model;
-            push.albedo = instances[0].albedo;
-            push.material = instances[0].material;
-
-            vkCmdPushConstants(cmd, active_pipeline.layout(),
-                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                               0, sizeof(PushData), &push);
-
-            key.mesh->bind(cmd);
-            key.mesh->draw(cmd);
+            VkDeviceSize offset = g * sizeof(VkDrawIndexedIndirectCommand);
+            vkCmdDrawIndexedIndirect(cmd, gpu_culling_->indirect_buffer(), offset, 1, 0);
             draw_calls++;
-        } else {
-            auto& inst_pipeline = wireframe ? *instanced_wire_pipeline_ : *instanced_fill_pipeline_;
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.handle());
+        }
 
-            VkDescriptorSet ds2 = descriptors_->set(current_frame_);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
-                                    0, 1, &ds2, 0, nullptr);
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
+        vkCmdEndRenderPass(cmd);
+
+    } else {
+        // === CPU PATH (existing) ===
+        vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
+
+        auto& active_pipeline = wireframe ? *geom_wire_pipeline_ : *geom_fill_pipeline_;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
+
+        VkDescriptorSet ds = descriptors_->set(current_frame_);
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
+                                0, 1, &ds, 0, nullptr);
+
+        std::unordered_map<BatchKey, std::vector<InstanceData>, BatchKeyHash> batches;
+
+        auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
+        for (auto entity : renderable_view) {
+            auto& mesh_comp = renderable_view.get<MeshComponent>(entity);
+            glm::mat4 world = scene_->world_transform(entity);
+
+            if (scene_->registry().all_of<BoundsComponent>(entity)) {
+                auto& bounds = scene_->registry().get<BoundsComponent>(entity);
+                auto world_bounds = bounds.transformed(world);
+
+                if (frustum_culling && !frustum.test_aabb(world_bounds.min, world_bounds.max)) {
+                    culled_objects++;
+                    continue;
+                }
+
+                if (occlusion_culling && hiz_ && hiz_->has_data() &&
+                    !hiz_->test_aabb(world_bounds.min, world_bounds.max, prev_view_proj_)) {
+                    culled_objects++;
+                    continue;
+                }
+            }
+
+            Mesh* draw_mesh = mesh_comp.mesh.get();
+            if (scene_->registry().all_of<LODComponent>(entity)) {
+                auto& lod = scene_->registry().get<LODComponent>(entity);
+                float dist = glm::length(cam_pos - glm::vec3(world[3]));
+                draw_mesh = lod.select(dist);
+                if (!draw_mesh) { culled_objects++; continue; }
+            }
+
+            InstanceData inst{};
+            inst.model = world;
+            inst.albedo = glm::vec4(1.0f);
+
+            VkDescriptorSet mat_set = default_mat_set;
+            if (scene_->registry().all_of<MaterialComponent>(entity)) {
+                auto& mat = scene_->registry().get<MaterialComponent>(entity);
+                inst.albedo = glm::vec4(mat.albedo, 1.0f);
+                inst.material = glm::vec4(mat.metallic, mat.roughness, 0.0f, 0.0f);
+                if (mat.texture_set != VK_NULL_HANDLE) mat_set = mat.texture_set;
+            }
+
+            batches[{draw_mesh, mat_set}].push_back(inst);
+        }
+
+        instance_buffer_->reset();
+
+        for (auto& [key, instances] : batches) {
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
                                     1, 1, &key.mat_set, 0, nullptr);
 
-            uint32_t base = instance_buffer_->push(instances);
-            uint32_t count = static_cast<uint32_t>(instances.size());
-            key.mesh->bind(cmd);
-            instance_buffer_->bind(cmd);
-            vkCmdDrawIndexed(cmd, key.mesh->index_count(), count, 0, 0, base);
-            draw_calls++;
+            if (instances.size() == 1) {
+                struct PushData { glm::mat4 model; glm::vec4 albedo; glm::vec4 material; };
+                PushData push{instances[0].model, instances[0].albedo, instances[0].material};
+                vkCmdPushConstants(cmd, active_pipeline.layout(),
+                                   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   0, sizeof(PushData), &push);
+                key.mesh->bind(cmd);
+                key.mesh->draw(cmd);
+                draw_calls++;
+            } else {
+                auto& inst_pipeline = wireframe ? *instanced_wire_pipeline_ : *instanced_fill_pipeline_;
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.handle());
 
-            // rebind push constant pipeline
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
-                                    0, 1, &ds, 0, nullptr);
+                VkDescriptorSet ds2 = descriptors_->set(current_frame_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
+                                        0, 1, &ds2, 0, nullptr);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
+                                        1, 1, &key.mat_set, 0, nullptr);
+
+                uint32_t base = instance_buffer_->push(instances);
+                uint32_t count = static_cast<uint32_t>(instances.size());
+                key.mesh->bind(cmd);
+                instance_buffer_->bind(cmd);
+                vkCmdDrawIndexed(cmd, key.mesh->index_count(), count, 0, 0, base);
+                draw_calls++;
+
+                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
+                                        0, 1, &ds, 0, nullptr);
+            }
         }
-    }
 
-    vkCmdEndRenderPass(cmd);
+        vkCmdEndRenderPass(cmd);
+    }
 
     prev_view_proj_ = proj_unjittered * view; // unjittered for occlusion culling
     prev_view_proj_unjittered_ = prev_view_proj_;

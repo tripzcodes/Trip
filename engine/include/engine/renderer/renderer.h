@@ -9,6 +9,7 @@
 #include <engine/renderer/frustum.h>
 #include <engine/renderer/instance_buffer.h>
 #include <engine/renderer/shadow_map.h>
+#include <engine/renderer/gpu_culling.h>
 #include <engine/renderer/hiz.h>
 #include <engine/renderer/taa.h>
 #include <engine/renderer/texture.h>
@@ -52,6 +53,7 @@ public:
     bool frustum_culling = true;
     bool occlusion_culling = false;
     bool taa_enabled = false;
+    bool gpu_culling = false;
     float taa_sharpness = 0.0f;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
@@ -92,6 +94,7 @@ private:
     std::unique_ptr<LightingPass> lighting_;
     std::unique_ptr<ShadowMap> shadow_map_;
     std::unique_ptr<PostProcess> post_process_;
+    std::unique_ptr<GpuCulling> gpu_culling_;
     std::unique_ptr<HiZPyramid> hiz_;
     std::unique_ptr<TAAPass> taa_;
 

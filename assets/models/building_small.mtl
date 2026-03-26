@@ -2,3 +2,4 @@ newmtl building_small
 Ka 1.0 1.0 1.0
 Kd 1.0 1.0 1.0
 map_Kd brick.png
+map_bump brick_normal.png

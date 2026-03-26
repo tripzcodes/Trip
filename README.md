@@ -4,7 +4,7 @@
 
 **Custom Vulkan game engine built from scratch in C++**
 
-Deferred renderer · Cascaded shadows · PBR lighting · Chunk streaming · Physics
+Deferred renderer · PBR · Normal mapping · TAA · Cascaded shadows · Chunk streaming · Physics
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.x-AC162C?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -38,8 +38,9 @@ shaders/          glsl → spir-v
 <table>
 <tr><td><b>Pass</b></td><td><b>Description</b></td></tr>
 <tr><td><code>Shadow</code></td><td>Cascaded / fixed shadow maps, 2048px per cascade, texel-snapped ortho projection</td></tr>
-<tr><td><code>Geometry</code></td><td>Frustum culling, Hi-Z occlusion culling, LOD selection, instanced batching</td></tr>
+<tr><td><code>Geometry</code></td><td>Frustum culling, Hi-Z occlusion culling, LOD selection, instanced batching, normal mapping via TBN</td></tr>
 <tr><td><code>Lighting</code></td><td>PBR Cook-Torrance BRDF, cascade shadow sampling with PCF</td></tr>
+<tr><td><code>TAA</code></td><td>Temporal anti-aliasing — Halton jitter, depth reprojection, YCoCg neighborhood clamping, CAS sharpening</td></tr>
 <tr><td><code>Post</code></td><td>SSAO, bloom, tone mapping (Reinhard / ACES), exposure control</td></tr>
 </table>
 
@@ -47,11 +48,15 @@ shaders/          glsl → spir-v
 
 `Deferred shading` · PBR metallic-roughness workflow
 
+`Normal mapping` · tangent-space via TBN matrix, auto-computed tangents from UVs
+
+`Temporal anti-aliasing` · Halton sub-pixel jitter, depth reprojection, YCoCg variance clamping, configurable CAS sharpening
+
 `Cascaded shadow maps` · stable texel snapping, PCF soft shadows
 
 `Frustum culling` · Gribb-Hartmann plane extraction
 
-`Hi-Z occlusion culling` · GPU pyramid generation, CPU readback
+`Hi-Z occlusion culling` · double-buffered GPU pyramid, CPU readback
 
 `Chunk streaming` · hysteresis load/unload, procedural generation callbacks
 

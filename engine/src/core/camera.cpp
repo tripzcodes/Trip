@@ -43,6 +43,13 @@ glm::mat4 Camera::projection_matrix(float aspect) const {
     return proj;
 }
 
+glm::mat4 Camera::jittered_projection_matrix(float aspect, glm::vec2 jitter_ndc) const {
+    auto proj = projection_matrix(aspect);
+    proj[2][0] += jitter_ndc.x;
+    proj[2][1] += jitter_ndc.y;
+    return proj;
+}
+
 void Camera::update_vectors() {
     glm::vec3 front;
     front.x = cos(glm::radians(yaw_)) * cos(glm::radians(pitch_));

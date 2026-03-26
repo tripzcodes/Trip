@@ -15,6 +15,7 @@ public:
 
     glm::mat4 view_matrix() const;
     glm::mat4 projection_matrix(float aspect) const;
+    glm::mat4 jittered_projection_matrix(float aspect, glm::vec2 jitter_ndc) const;
 
     glm::vec3 position() const { return position_; }
     glm::vec3 front() const { return front_; }

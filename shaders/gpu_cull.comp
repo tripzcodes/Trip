@@ -1,0 +1,99 @@
+#version 450
+layout(local_size_x = 64) in;
+
+struct GpuEntity {
+    mat4  model;
+    vec4  aabb_min;
+    vec4  aabb_max;
+    vec4  albedo;
+    vec4  material;
+    uint  group_id;
+    uint  _pad0;
+    uint  _pad1;
+    uint  _pad2;
+};
+
+struct InstanceData {
+    mat4  model;
+    vec4  albedo;
+    vec4  material;
+};
+
+struct DrawCommand {
+    uint indexCount;
+    uint instanceCount;
+    uint firstIndex;
+    int  vertexOffset;
+    uint firstInstance;
+};
+
+struct GroupMeta {
+    uint index_count;
+    uint instance_offset;
+    uint max_instances;
+    uint _pad;
+};
+
+layout(set = 0, binding = 0) readonly buffer EntityBuf {
+    GpuEntity entities[];
+};
+
+layout(set = 0, binding = 1) readonly buffer GroupBuf {
+    GroupMeta groups[];
+};
+
+layout(set = 0, binding = 2) uniform FrustumUBO {
+    vec4 planes[6];
+    uint entity_count;
+    uint group_count;
+};
+
+layout(set = 0, binding = 3) writeonly buffer OutputInstances {
+    InstanceData out_instances[];
+};
+
+layout(set = 0, binding = 4) buffer IndirectBuf {
+    DrawCommand commands[];
+};
+
+layout(set = 0, binding = 5) buffer CounterBuf {
+    uint counters[];
+};
+
+bool frustum_test(vec3 aabb_min, vec3 aabb_max) {
+    for (int i = 0; i < 6; i++) {
+        vec3 normal = planes[i].xyz;
+        float dist = planes[i].w;
+
+        vec3 p;
+        p.x = (normal.x >= 0.0) ? aabb_max.x : aabb_min.x;
+        p.y = (normal.y >= 0.0) ? aabb_max.y : aabb_min.y;
+        p.z = (normal.z >= 0.0) ? aabb_max.z : aabb_min.z;
+
+        if (dot(normal, p) + dist < -2.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= entity_count) return;
+
+    GpuEntity ent = entities[idx];
+
+    if (!frustum_test(ent.aabb_min.xyz, ent.aabb_max.xyz)) return;
+
+    uint gid = ent.group_id;
+    uint local_idx = atomicAdd(counters[gid], 1);
+
+    if (local_idx >= groups[gid].max_instances) return;
+
+    atomicAdd(commands[gid].instanceCount, 1);
+
+    uint slot = groups[gid].instance_offset + local_idx;
+    out_instances[slot].model    = ent.model;
+    out_instances[slot].albedo   = ent.albedo;
+    out_instances[slot].material = ent.material;
+}

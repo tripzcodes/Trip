@@ -14,9 +14,10 @@ struct Vertex {
     glm::vec3 normal;
     glm::vec3 color;
     glm::vec2 uv;
+    glm::vec4 tangent{0.0f}; // xyz = tangent, w = bitangent sign
 
     static VkVertexInputBindingDescription binding_description();
-    static std::array<VkVertexInputAttributeDescription, 4> attribute_descriptions();
+    static std::array<VkVertexInputAttributeDescription, 5> attribute_descriptions();
 };
 
 class Mesh {

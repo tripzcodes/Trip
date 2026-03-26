@@ -4,6 +4,7 @@
 #include <engine/renderer/mesh.h>
 #include <engine/renderer/gui.h>
 #include <engine/core/camera.h>
+#include <engine/renderer/text.h>
 #include <engine/scene/scene.h>
 #include <engine/scene/components.h>
 #include <engine/scene/lod.h>
@@ -314,7 +315,7 @@ bool Renderer::begin_frame() {
     return true;
 }
 
-void Renderer::render(const Camera& camera, Gui& gui) {
+void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
     auto cmd = command_buffers_[current_frame_];
 
     // save previous VP before geometry_pass overwrites it
@@ -369,7 +370,10 @@ void Renderer::render(const Camera& camera, Gui& gui) {
 
     post_process_pass(cmd);
 
-    // ImGui on top (inside the post-process render pass which is still open)
+    // in-game text (inside the post-process render pass which is still open)
+    if (text) text->render(cmd);
+
+    // ImGui on top
     gui.render(cmd);
 
     vkCmdEndRenderPass(cmd);

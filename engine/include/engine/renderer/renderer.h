@@ -26,6 +26,7 @@ class Camera;
 class Gui;
 class Scene;
 class Swapchain;
+class TextRenderer;
 class VulkanContext;
 
 class Renderer {
@@ -45,7 +46,7 @@ public:
     VkDescriptorSet allocate_material_set(const Texture& albedo_tex);
 
     bool begin_frame();
-    void render(const Camera& camera, Gui& gui);
+    void render(const Camera& camera, Gui& gui, TextRenderer* text = nullptr);
     void end_frame();
 
     bool wireframe = false;

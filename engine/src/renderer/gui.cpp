@@ -107,6 +107,11 @@ void Gui::begin_frame(Scene& scene, uint32_t draw_calls, uint32_t culled_objects
     ImGui::ColorEdit3("Clear Color", state_.clear_color);
 
     ImGui::Separator();
+    state_.save_scene = ImGui::Button("Save Scene");
+    ImGui::SameLine();
+    state_.load_scene = ImGui::Button("Load Scene");
+
+    ImGui::Separator();
     ImGui::Text("Post-Processing");
     ImGui::Checkbox("SSAO", &state_.ssao_enabled);
     if (state_.ssao_enabled) {

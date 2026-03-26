@@ -31,6 +31,10 @@ struct GuiState {
     float exposure = 1.0f;
     float camera_speed = 3.0f;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
+
+    // save/load triggers (set to true for one frame when button clicked)
+    bool save_scene = false;
+    bool load_scene = false;
 };
 
 class Gui {

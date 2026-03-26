@@ -50,8 +50,52 @@ vec3 fresnel_schlick(float cos_theta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cos_theta, 0.0, 1.0), 5.0);
 }
 
+// PCSS: estimate penumbra width from blocker distance
+const float PCSS_LIGHT_SIZE = 0.04;  // world-space light angular size
+const int   PCSS_BLOCKER_SAMPLES = 16;
+const int   PCSS_PCF_SAMPLES = 25;
+
+// Poisson disk for sampling
+const vec2 poisson_disk[25] = vec2[](
+    vec2(-0.9409, -0.2449), vec2(-0.3531,  0.8864), vec2( 0.7660, -0.0688),
+    vec2(-0.6999, -0.6890), vec2( 0.1398,  0.3559), vec2(-0.1622, -0.7611),
+    vec2( 0.8033,  0.5570), vec2(-0.4897,  0.1868), vec2( 0.4323, -0.5397),
+    vec2(-0.8649,  0.3542), vec2( 0.2119, -0.9692), vec2( 0.5897,  0.8588),
+    vec2(-0.2418, -0.3692), vec2( 0.9593, -0.2852), vec2(-0.5817,  0.6501),
+    vec2( 0.0285,  0.9294), vec2( 0.3618, -0.2019), vec2(-0.9207,  0.0783),
+    vec2( 0.6528,  0.2258), vec2(-0.3207, -0.9484), vec2( 0.4709,  0.4685),
+    vec2(-0.7571, -0.3594), vec2( 0.1022,  0.6898), vec2( 0.8560, -0.5852),
+    vec2(-0.4520,  0.9012)
+);
+
+float search_blockers(vec2 uv, float receiver_depth, float search_radius, int cascade) {
+    float blocker_sum = 0.0;
+    int blocker_count = 0;
+
+    for (int i = 0; i < PCSS_BLOCKER_SAMPLES; i++) {
+        vec2 offset = poisson_disk[i] * search_radius;
+        float depth = texture(shadow_map, vec3(uv + offset, float(cascade))).r;
+        if (depth < receiver_depth) {
+            blocker_sum += depth;
+            blocker_count++;
+        }
+    }
+
+    return blocker_count > 0 ? blocker_sum / float(blocker_count) : -1.0;
+}
+
+float pcf_filter(vec2 uv, float receiver_depth, float filter_radius, float bias, int cascade) {
+    float shadow = 0.0;
+    for (int i = 0; i < PCSS_PCF_SAMPLES; i++) {
+        vec2 offset = poisson_disk[i] * filter_radius;
+        float depth = texture(shadow_map, vec3(uv + offset, float(cascade))).r;
+        shadow += (receiver_depth - bias > depth) ? 0.0 : 1.0;
+    }
+    return shadow / float(PCSS_PCF_SAMPLES);
+}
+
 float shadow_calc(vec3 world_pos) {
-    // select cascade by view-space depth (planar, not spherical)
+    // select cascade by view-space depth
     float view_depth = dot(world_pos - light.camera_pos.xyz, light.camera_forward.xyz);
 
     int cascade = CASCADE_COUNT - 1;
@@ -74,21 +118,24 @@ float shadow_calc(vec3 world_pos) {
         return 1.0;
     }
 
-    // PCF 3x3 with manual depth compare
-    // small bias needed — D32_SFLOAT makes hardware constant bias negligible
-    float shadow = 0.0;
     vec2 texel_size = vec2(1.0 / textureSize(shadow_map, 0).xy);
     float bias = 0.001;
-    for (int x = -1; x <= 1; x++) {
-        for (int y = -1; y <= 1; y++) {
-            float depth = texture(shadow_map,
-                vec3(shadow_coord.xy + vec2(x, y) * texel_size, float(cascade))).r;
-            shadow += (shadow_coord.z - bias > depth) ? 0.0 : 1.0;
-        }
-    }
-    shadow /= 9.0;
+    float receiver = shadow_coord.z;
 
-    return shadow;
+    // PCSS step 1: blocker search
+    float search_radius = PCSS_LIGHT_SIZE * receiver * 8.0;
+    search_radius = max(search_radius, texel_size.x * 2.0);
+    float avg_blocker = search_blockers(shadow_coord.xy, receiver - bias, search_radius, cascade);
+
+    // no blockers = fully lit
+    if (avg_blocker < 0.0) return 1.0;
+
+    // PCSS step 2: penumbra estimation
+    float penumbra = (receiver - avg_blocker) * PCSS_LIGHT_SIZE / avg_blocker;
+    float filter_radius = max(penumbra * 4.0, texel_size.x * 1.5);
+
+    // PCSS step 3: filtered PCF
+    return pcf_filter(shadow_coord.xy, receiver, filter_radius, bias, cascade);
 }
 
 void main() {

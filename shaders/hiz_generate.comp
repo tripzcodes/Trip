@@ -1,0 +1,20 @@
+#version 450
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) uniform sampler2D input_depth;
+layout(set = 0, binding = 1, r32f) writeonly uniform image2D output_mip;
+
+layout(push_constant) uniform PC {
+    ivec2 output_size;
+};
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= output_size.x || pos.y >= output_size.y) return;
+
+    vec2 uv = (vec2(pos) * 2.0 + 1.0) / vec2(textureSize(input_depth, 0));
+    vec4 depths = textureGather(input_depth, uv, 0);
+    float max_d = max(max(depths.x, depths.y), max(depths.z, depths.w));
+    imageStore(output_mip, pos, vec4(max_d));
+}

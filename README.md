@@ -88,6 +88,10 @@ shaders/          glsl → spir-v
 <tr><td><img src="https://img.shields.io/badge/-333?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoMTh2MThIM3ptMiAydjE0aDE0VjV6Ii8+PC9zdmc+" alt=""/></td><td>GLFW · Dear ImGui · VMA · tinyobjloader · stb_image · stb_truetype · nlohmann/json</td></tr>
 </table>
 
+## Documentation
+
+See **[API Reference](docs/API.md)** for the full engine API — every public class, method, struct, and enum.
+
 ## Build
 
 > Requires **Vulkan SDK**, **GLFW**, and **GLM**

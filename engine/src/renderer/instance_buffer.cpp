@@ -53,23 +53,23 @@ VkVertexInputBindingDescription InstanceBuffer::binding_description() {
 std::array<VkVertexInputAttributeDescription, 6> InstanceBuffer::attribute_descriptions() {
     std::array<VkVertexInputAttributeDescription, 6> attrs{};
 
-    // model matrix — 4 vec4s at locations 4-7
+    // model matrix — 4 vec4s at locations 5-8 (vertex tangent uses location 4)
     for (uint32_t i = 0; i < 4; i++) {
         attrs[i].binding = 1;
-        attrs[i].location = 4 + i;
+        attrs[i].location = 5 + i;
         attrs[i].format = VK_FORMAT_R32G32B32A32_SFLOAT;
         attrs[i].offset = offsetof(InstanceData, model) + sizeof(glm::vec4) * i;
     }
 
-    // albedo at location 8
+    // albedo at location 9
     attrs[4].binding = 1;
-    attrs[4].location = 8;
+    attrs[4].location = 9;
     attrs[4].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attrs[4].offset = offsetof(InstanceData, albedo);
 
-    // material at location 9
+    // material at location 10
     attrs[5].binding = 1;
-    attrs[5].location = 9;
+    attrs[5].location = 10;
     attrs[5].format = VK_FORMAT_R32G32B32A32_SFLOAT;
     attrs[5].offset = offsetof(InstanceData, material);
 

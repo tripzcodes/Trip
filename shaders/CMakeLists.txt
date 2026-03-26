@@ -32,5 +32,6 @@ compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/shadow.frag)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/postprocess.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/postprocess.frag)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/hiz_generate.comp)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/taa_resolve.comp)
 
 add_custom_target(shaders ALL DEPENDS ${SPV_FILES})

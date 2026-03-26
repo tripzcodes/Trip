@@ -24,6 +24,7 @@ add_library(engine STATIC
     src/renderer/gbuffer.cpp
     src/renderer/lighting_pass.cpp
     src/renderer/shadow_map.cpp
+    src/renderer/taa.cpp
     src/renderer/vma_impl.cpp
     src/core/window.cpp
     src/core/input.cpp

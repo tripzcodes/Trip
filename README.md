@@ -4,7 +4,7 @@
 
 **Custom Vulkan game engine built from scratch in C++**
 
-Deferred renderer · PBR · Normal mapping · TAA · Cascaded shadows · Chunk streaming · Physics
+Deferred renderer · PBR · Normal mapping · TAA · GPU-driven culling · Cascaded shadows · Chunk streaming · Physics
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.x-AC162C?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -38,6 +38,7 @@ shaders/          glsl → spir-v
 <table>
 <tr><td><b>Pass</b></td><td><b>Description</b></td></tr>
 <tr><td><code>Shadow</code></td><td>Cascaded / fixed shadow maps, 2048px per cascade, texel-snapped ortho projection</td></tr>
+<tr><td><code>GPU Cull</code></td><td>Compute-based frustum culling, atomic instance compaction, indirect draw commands</td></tr>
 <tr><td><code>Geometry</code></td><td>Frustum culling, Hi-Z occlusion culling, LOD selection, instanced batching, normal mapping via TBN</td></tr>
 <tr><td><code>Lighting</code></td><td>PBR Cook-Torrance BRDF, cascade shadow sampling with PCF</td></tr>
 <tr><td><code>TAA</code></td><td>Temporal anti-aliasing — Halton jitter, depth reprojection, YCoCg neighborhood clamping, CAS sharpening</td></tr>
@@ -55,6 +56,8 @@ shaders/          glsl → spir-v
 `Cascaded shadow maps` · stable texel snapping, PCF soft shadows
 
 `Frustum culling` · Gribb-Hartmann plane extraction
+
+`GPU-driven culling` · compute shader frustum test, atomic compaction, `vkCmdDrawIndexedIndirect`
 
 `Hi-Z occlusion culling` · double-buffered GPU pyramid, CPU readback
 

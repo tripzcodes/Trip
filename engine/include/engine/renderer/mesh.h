@@ -34,6 +34,8 @@ public:
     void draw(VkCommandBuffer cmd) const;
 
     uint32_t index_count() const { return index_count_; }
+    VkBuffer vertex_buffer() const { return vertex_buffer_.buffer; }
+    VkBuffer index_buffer() const { return index_buffer_.buffer; }
 
     struct AABB { glm::vec3 min{0.0f}; glm::vec3 max{0.0f}; };
     const AABB& bounds() const { return bounds_; }

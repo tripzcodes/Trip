@@ -28,6 +28,8 @@ add_library(engine STATIC
     src/renderer/gpu_culling.cpp
     src/scene/serializer.cpp
     src/renderer/vma_impl.cpp
+    src/renderer/stb_truetype_impl.cpp
+    src/renderer/text.cpp
     src/core/window.cpp
     src/core/input.cpp
     src/core/camera.cpp

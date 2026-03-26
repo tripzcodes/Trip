@@ -14,6 +14,7 @@
 #include <engine/scene/lod.h>
 #include <engine/physics/physics_world.h>
 #include <engine/world/chunk.h>
+#include <engine/world/terrain.h>
 #include <engine/scene/serializer.h>
 
 #include <chrono>
@@ -26,7 +27,7 @@ int main() {
     try {
         engine::Window window({"Graphics Engine", 1280, 720, true});
         engine::Input input(window.handle());
-        engine::Camera camera({0.0f, 5.0f, 0.0f});
+        engine::Camera camera({0.0f, 12.0f, 0.0f});
         engine::VulkanContext context(window);
         engine::Swapchain swapchain(context, window);
         engine::Allocator allocator(context);
@@ -47,27 +48,25 @@ int main() {
         scene.get<engine::TransformComponent>(sun).rotation = {-45.0f, -30.0f, 0.0f};
         scene.add<engine::DirectionalLightComponent>(sun);
 
-        // floor — large enough for streaming world
-        float f = 200.0f;
-        glm::vec3 fc{0.5f, 0.5f, 0.5f};
-        glm::vec3 fn{0.0f, 1.0f, 0.0f};
-        glm::vec4 ft{1, 0, 0, 1}; // floor tangent along +X
-        auto floor_mesh = std::make_shared<engine::Mesh>(allocator,
-            std::vector<engine::Vertex>{
-                {{-f, 0, -f}, fn, fc, {0, 0}, ft}, {{ f, 0, -f}, fn, fc, {1, 0}, ft},
-                {{ f, 0,  f}, fn, fc, {1, 1}, ft}, {{-f, 0,  f}, fn, fc, {0, 1}, ft},
-            },
-            std::vector<uint32_t>{0, 1, 2, 2, 3, 0});
-        auto floor_ent = scene.create("Floor");
-        scene.add<engine::MeshComponent>(floor_ent, engine::MeshComponent{floor_mesh});
-        scene.add<engine::MaterialComponent>(floor_ent);
+        // terrain
+        engine::TerrainConfig terrain_cfg{};
+        terrain_cfg.size = 400.0f;
+        terrain_cfg.resolution = 128;
+        terrain_cfg.height_scale = 15.0f;
+        terrain_cfg.noise_scale = 0.006f;
+        terrain_cfg.octaves = 5;
+        terrain_cfg.persistence = 0.5f;
+        engine::Terrain terrain(allocator, terrain_cfg);
 
-        // floor is a static rigid body
-        engine::RigidBodyComponent floor_rb{};
-        floor_rb.type = engine::RigidBodyComponent::Type::Static;
-        floor_rb.shape = engine::RigidBodyComponent::Shape::Box;
-        floor_rb.half_extents = {200.0f, 0.1f, 200.0f};
-        scene.add<engine::RigidBodyComponent>(floor_ent, floor_rb);
+        auto terrain_ent = scene.create("Terrain");
+        scene.add<engine::MeshComponent>(terrain_ent, engine::MeshComponent{terrain.mesh()});
+        scene.add<engine::MaterialComponent>(terrain_ent);
+
+        engine::RigidBodyComponent terrain_rb{};
+        terrain_rb.type = engine::RigidBodyComponent::Type::Static;
+        terrain_rb.shape = engine::RigidBodyComponent::Shape::Box;
+        terrain_rb.half_extents = {200.0f, 10.0f, 200.0f};
+        scene.add<engine::RigidBodyComponent>(terrain_ent, terrain_rb);
 
         // helper to load a textured model
         struct LoadedModel {
@@ -124,7 +123,7 @@ int main() {
         constexpr uint32_t view_radius = 3;
         engine::ChunkManager chunks(scene, allocator, chunk_size, view_radius);
         renderer.shadow_radius = static_cast<float>(view_radius + 1) * chunk_size;
-        chunks.set_generator([cube_mesh, cube_tex, buildings](
+        chunks.set_generator([cube_mesh, cube_tex, &terrain](
                 engine::Scene& s, const engine::Allocator&,
                 engine::Chunk& chunk, float chunk_size) {
 
@@ -142,100 +141,28 @@ int main() {
                 return lo + (static_cast<float>(next_rand() % 1000) / 1000.0f) * (hi - lo);
             };
 
-            // helper to place a building entity
-            auto place_building = [&](float wx, float wz, float yaw, uint32_t type) {
-                auto& bdef = buildings[type % buildings.size()];
-                auto e = s.create(bdef.name);
-                s.add<engine::MeshComponent>(e, engine::MeshComponent{bdef.mesh});
-                auto& mat = s.add<engine::MaterialComponent>(e);
-                mat.texture_set = bdef.tex_set;
-                auto& tb = bdef.mesh->bounds();
-                s.add<engine::BoundsComponent>(e, engine::BoundsComponent{tb.min, tb.max});
+            // scatter a few rocks/props on the terrain
+            uint32_t count = 2 + (next_rand() % 3);
+            for (uint32_t i = 0; i < count; i++) {
+                float lx = rand_float(2.0f, chunk_size - 2.0f);
+                float lz = rand_float(2.0f, chunk_size - 2.0f);
+                float scale = rand_float(0.3f, 1.2f);
+                float wx = base_x + lx;
+                float wz = base_z + lz;
+                float wy = terrain.height_at(wx, wz);
 
-                s.get<engine::TransformComponent>(e).position = {wx, 0.0f, wz};
-                s.get<engine::TransformComponent>(e).rotation.y = yaw;
-
-                engine::RigidBodyComponent rb{};
-                rb.type = engine::RigidBodyComponent::Type::Static;
-                rb.shape = engine::RigidBodyComponent::Shape::Box;
-                rb.half_extents = bdef.half_extents;
-                s.add<engine::RigidBodyComponent>(e, rb);
-
-                chunk.entities.push_back(e);
-            };
-
-            // --- city grid layout ---
-            // each chunk is divided into a 2x2 grid of city blocks separated by streets
-            constexpr float street_w = 6.0f;       // road width
-            constexpr float block_size = 13.0f;     // (32 - 6) / 2 = 13 per block
-            constexpr float sidewalk = 1.5f;        // inset from block edge
-            constexpr float building_step = 5.0f;   // spacing between buildings along block edge
-
-            // 2x2 blocks per chunk
-            for (int bx = 0; bx < 2; bx++) {
-                for (int bz = 0; bz < 2; bz++) {
-                    // block origin (bottom-left corner in world space)
-                    float block_x = base_x + bx * (block_size + street_w);
-                    float block_z = base_z + bz * (block_size + street_w);
-
-                    // seed variation per block
-                    uint32_t block_seed = next_rand();
-                    uint32_t building_type_base = block_seed % buildings.size();
-                    bool is_tall_block = (block_seed % 5 == 0); // 20% chance of tall-only block
-
-                    // place buildings along the 4 edges of the block
-                    // south edge (facing -Z street)
-                    for (float x = sidewalk; x + 3.0f < block_size - sidewalk; x += building_step) {
-                        uint32_t type = is_tall_block ? 1 : (next_rand() % 2); // small or tall
-                        place_building(block_x + x, block_z + sidewalk, 0.0f, type);
-                    }
-
-                    // north edge (facing +Z street)
-                    for (float x = sidewalk; x + 3.0f < block_size - sidewalk; x += building_step) {
-                        uint32_t type = is_tall_block ? 1 : (next_rand() % 2);
-                        place_building(block_x + x, block_z + block_size - sidewalk, 180.0f, type);
-                    }
-
-                    // west edge (facing -X street)
-                    for (float z = sidewalk + building_step; z + 3.0f < block_size - sidewalk - building_step; z += building_step) {
-                        uint32_t type = next_rand() % 2;
-                        place_building(block_x + sidewalk, block_z + z, 90.0f, type);
-                    }
-
-                    // east edge (facing +X street)
-                    for (float z = sidewalk + building_step; z + 3.0f < block_size - sidewalk - building_step; z += building_step) {
-                        uint32_t type = next_rand() % 2;
-                        place_building(block_x + block_size - sidewalk, block_z + z, 270.0f, type);
-                    }
-
-                    // walls along block perimeter (between buildings)
-                    if (next_rand() % 3 == 0) {
-                        place_building(block_x + block_size * 0.5f, block_z + sidewalk * 0.5f, 0.0f, 2); // wall type
-                    }
-                }
-            }
-
-            // scattered props on streets/sidewalks
-            uint32_t prop_count = 1 + (next_rand() % 3);
-            for (uint32_t i = 0; i < prop_count; i++) {
-                float lx = rand_float(0.0f, chunk_size);
-                float lz = rand_float(0.0f, chunk_size);
-                float scale = rand_float(0.2f, 0.5f);
-
-                auto e = s.create("Prop");
+                auto e = s.create("Rock");
                 s.add<engine::MeshComponent>(e, engine::MeshComponent{cube_mesh});
                 auto& mat = s.add<engine::MaterialComponent>(e);
                 mat.texture_set = cube_tex;
+                mat.roughness = 0.9f;
                 auto& tb = cube_mesh->bounds();
                 s.add<engine::BoundsComponent>(e, engine::BoundsComponent{tb.min, tb.max});
 
-                engine::LODComponent lod{};
-                lod.levels = {{ cube_mesh, 50.0f }, { cube_mesh, 100.0f }};
-                lod.cull_distance = 120.0f;
-                s.add<engine::LODComponent>(e, std::move(lod));
-
-                s.get<engine::TransformComponent>(e).position = {base_x + lx, 0.5f * scale, base_z + lz};
+                s.get<engine::TransformComponent>(e).position = {wx, wy + 0.5f * scale, wz};
                 s.get<engine::TransformComponent>(e).scale = glm::vec3(scale);
+                s.get<engine::TransformComponent>(e).rotation = {
+                    rand_float(0, 15), rand_float(0, 360), rand_float(0, 15)};
 
                 engine::RigidBodyComponent rb{};
                 rb.type = engine::RigidBodyComponent::Type::Static;

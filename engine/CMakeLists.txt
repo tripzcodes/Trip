@@ -33,6 +33,7 @@ add_library(engine STATIC
     src/core/camera.cpp
     src/scene/scene.cpp
     src/world/chunk.cpp
+    src/world/terrain.cpp
     src/physics/physics_world.cpp
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp

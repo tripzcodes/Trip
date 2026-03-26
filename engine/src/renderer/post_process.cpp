@@ -121,29 +121,30 @@ void PostProcess::create_descriptors() {
         throw std::runtime_error("Failed to create post-process descriptor layout");
     }
 
-    VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 };
+    VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * MAX_FRAMES };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     pool_info.poolSizeCount = 1;
     pool_info.pPoolSizes = &pool_size;
-    pool_info.maxSets = 1;
+    pool_info.maxSets = MAX_FRAMES;
 
     if (vkCreateDescriptorPool(device, &pool_info, nullptr, &desc_pool_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create post-process descriptor pool");
     }
 
+    VkDescriptorSetLayout layouts[MAX_FRAMES] = {desc_layout_, desc_layout_};
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = desc_pool_;
-    alloc_info.descriptorSetCount = 1;
-    alloc_info.pSetLayouts = &desc_layout_;
+    alloc_info.descriptorSetCount = MAX_FRAMES;
+    alloc_info.pSetLayouts = layouts;
 
-    if (vkAllocateDescriptorSets(device, &alloc_info, &descriptor_set_) != VK_SUCCESS) {
-        throw std::runtime_error("Failed to allocate post-process descriptor set");
+    if (vkAllocateDescriptorSets(device, &alloc_info, descriptor_sets_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to allocate post-process descriptor sets");
     }
 
-    // bind G-Buffer depth and normal now (they don't change)
+    // bind G-Buffer depth and normal to all per-frame sets (they don't change)
     VkDescriptorImageInfo depth_info{};
     depth_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
     depth_info.imageView = gbuffer_.depth_view();
@@ -154,33 +155,36 @@ void PostProcess::create_descriptors() {
     normal_info.imageView = gbuffer_.normal_view();
     normal_info.sampler = gbuffer_.sampler();
 
-    std::array<VkWriteDescriptorSet, 2> writes{};
-    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[0].dstSet = descriptor_set_;
-    writes[0].dstBinding = 1;
-    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writes[0].descriptorCount = 1;
-    writes[0].pImageInfo = &depth_info;
+    for (uint32_t f = 0; f < MAX_FRAMES; f++) {
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = descriptor_sets_[f];
+        writes[0].dstBinding = 1;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[0].descriptorCount = 1;
+        writes[0].pImageInfo = &depth_info;
 
-    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    writes[1].dstSet = descriptor_set_;
-    writes[1].dstBinding = 2;
-    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    writes[1].descriptorCount = 1;
-    writes[1].pImageInfo = &normal_info;
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = descriptor_sets_[f];
+        writes[1].dstBinding = 2;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].descriptorCount = 1;
+        writes[1].pImageInfo = &normal_info;
 
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+        vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
+    }
 }
 
-void PostProcess::bind_hdr_input(VkImageView hdr_view, VkSampler sampler) {
+void PostProcess::bind_hdr_input(uint32_t frame, VkImageView hdr_view, VkSampler sampler,
+                                  VkImageLayout layout) {
     VkDescriptorImageInfo info{};
-    info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    info.imageLayout = layout;
     info.imageView = hdr_view;
     info.sampler = sampler;
 
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = descriptor_set_;
+    write.dstSet = descriptor_sets_[frame];
     write.dstBinding = 0;
     write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     write.descriptorCount = 1;

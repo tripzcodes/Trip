@@ -39,12 +39,13 @@ public:
     const std::vector<VkFramebuffer>& framebuffers() const { return framebuffers_; }
     VkPipeline pipeline() const { return pipeline_; }
     VkPipelineLayout pipeline_layout() const { return pipeline_layout_; }
-    VkDescriptorSet descriptor_set() const { return descriptor_set_; }
+    VkDescriptorSet descriptor_set(uint32_t frame) const { return descriptor_sets_[frame]; }
 
     void update_settings(const PostProcessSettings& settings);
 
-    // bind the HDR lighting output for post-processing
-    void bind_hdr_input(VkImageView hdr_view, VkSampler sampler);
+    // bind the HDR lighting output for post-processing (per-frame for TAA ping-pong safety)
+    void bind_hdr_input(uint32_t frame, VkImageView hdr_view, VkSampler sampler,
+                        VkImageLayout layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 private:
     void create_render_pass();
@@ -61,7 +62,8 @@ private:
 
     VkDescriptorSetLayout desc_layout_ = VK_NULL_HANDLE;
     VkDescriptorPool desc_pool_ = VK_NULL_HANDLE;
-    VkDescriptorSet descriptor_set_ = VK_NULL_HANDLE;
+    static constexpr uint32_t MAX_FRAMES = 2;
+    VkDescriptorSet descriptor_sets_[MAX_FRAMES]{};
 
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;

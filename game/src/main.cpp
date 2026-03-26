@@ -14,6 +14,7 @@
 #include <engine/scene/lod.h>
 #include <engine/physics/physics_world.h>
 #include <engine/world/chunk.h>
+#include <engine/scene/serializer.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -289,6 +290,58 @@ int main() {
             renderer.post_settings.bloom_intensity = gui.state().bloom_intensity;
             renderer.post_settings.tone_map_mode = gui.state().tone_map_mode;
             renderer.post_settings.exposure = gui.state().exposure;
+
+            // save/load scene (reset flags after handling)
+            bool do_save = gui.state().save_scene;
+            bool do_load = gui.state().load_scene;
+            gui.state().save_scene = false;
+            gui.state().load_scene = false;
+            if (do_save) {
+                engine::SceneSettings ss{};
+                auto cp = camera.position();
+                ss.camera_pos[0] = cp.x; ss.camera_pos[1] = cp.y; ss.camera_pos[2] = cp.z;
+                ss.camera_yaw = camera.yaw();
+                ss.camera_pitch = camera.pitch();
+                ss.camera_fov = camera.fov;
+                ss.camera_speed = camera.move_speed;
+                ss.shadow_mode = gui.state().shadow_mode;
+                ss.frustum_culling = gui.state().frustum_culling;
+                ss.taa_enabled = gui.state().taa_enabled;
+                ss.taa_sharpness = gui.state().taa_sharpness;
+                ss.ssao_enabled = gui.state().ssao_enabled;
+                ss.ssao_radius = gui.state().ssao_radius;
+                ss.ssao_intensity = gui.state().ssao_intensity;
+                ss.bloom_enabled = gui.state().bloom_enabled;
+                ss.bloom_threshold = gui.state().bloom_threshold;
+                ss.bloom_intensity = gui.state().bloom_intensity;
+                ss.tone_map_mode = gui.state().tone_map_mode;
+                ss.exposure = gui.state().exposure;
+                std::copy(gui.state().clear_color, gui.state().clear_color + 3, ss.clear_color);
+                engine::SceneSerializer::save(scene, ss, "scene.json");
+            }
+            if (do_load) {
+                engine::SceneSettings ss{};
+                if (engine::SceneSerializer::load(scene, ss, "scene.json")) {
+                    camera.set_position({ss.camera_pos[0], ss.camera_pos[1], ss.camera_pos[2]});
+                    camera.set_yaw_pitch(ss.camera_yaw, ss.camera_pitch);
+                    camera.fov = ss.camera_fov;
+                    camera.move_speed = ss.camera_speed;
+                    gui.state().shadow_mode = ss.shadow_mode;
+                    gui.state().frustum_culling = ss.frustum_culling;
+                    gui.state().taa_enabled = ss.taa_enabled;
+                    gui.state().taa_sharpness = ss.taa_sharpness;
+                    gui.state().ssao_enabled = ss.ssao_enabled;
+                    gui.state().ssao_radius = ss.ssao_radius;
+                    gui.state().ssao_intensity = ss.ssao_intensity;
+                    gui.state().bloom_enabled = ss.bloom_enabled;
+                    gui.state().bloom_threshold = ss.bloom_threshold;
+                    gui.state().bloom_intensity = ss.bloom_intensity;
+                    gui.state().tone_map_mode = ss.tone_map_mode;
+                    gui.state().exposure = ss.exposure;
+                    std::copy(ss.clear_color, ss.clear_color + 3, gui.state().clear_color);
+                    gui.state().camera_speed = ss.camera_speed;
+                }
+            }
 
             gui.begin_frame(scene, renderer.draw_calls, renderer.culled_objects,
                             chunks.loaded_chunks());

@@ -26,6 +26,7 @@ add_library(engine STATIC
     src/renderer/shadow_map.cpp
     src/renderer/taa.cpp
     src/renderer/gpu_culling.cpp
+    src/scene/serializer.cpp
     src/renderer/vma_impl.cpp
     src/core/window.cpp
     src/core/input.cpp
@@ -48,6 +49,7 @@ target_include_directories(engine PUBLIC
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${CMAKE_SOURCE_DIR}/third_party/entt
+    ${CMAKE_SOURCE_DIR}/third_party
 )
 
 target_link_libraries(engine PUBLIC

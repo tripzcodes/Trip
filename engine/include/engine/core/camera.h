@@ -18,7 +18,12 @@ public:
     glm::mat4 jittered_projection_matrix(float aspect, glm::vec2 jitter_ndc) const;
 
     glm::vec3 position() const { return position_; }
+    void set_position(const glm::vec3& p) { position_ = p; }
     glm::vec3 front() const { return front_; }
+
+    float yaw() const { return yaw_; }
+    float pitch() const { return pitch_; }
+    void set_yaw_pitch(float y, float p) { yaw_ = y; pitch_ = p; update_vectors(); }
 
     float fov = 45.0f;
     float near_plane = 0.1f;

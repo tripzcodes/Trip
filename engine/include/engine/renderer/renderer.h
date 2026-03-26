@@ -10,6 +10,7 @@
 #include <engine/renderer/instance_buffer.h>
 #include <engine/renderer/shadow_map.h>
 #include <engine/renderer/hiz.h>
+#include <engine/renderer/taa.h>
 #include <engine/renderer/texture.h>
 
 #include <vulkan/vulkan.h>
@@ -39,7 +40,8 @@ public:
     VkRenderPass lighting_render_pass() const;
 
     // allocate a material descriptor set for a texture and write the sampler binding
-    VkDescriptorSet allocate_material_set(const Texture& texture);
+    VkDescriptorSet allocate_material_set(const Texture& albedo_tex, const Texture& normal_tex);
+    VkDescriptorSet allocate_material_set(const Texture& albedo_tex);
 
     bool begin_frame();
     void render(const Camera& camera, Gui& gui);
@@ -49,6 +51,8 @@ public:
     bool show_cascade_debug = false;
     bool frustum_culling = true;
     bool occlusion_culling = false;
+    bool taa_enabled = false;
+    float taa_sharpness = 0.0f;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
     PostProcessSettings post_settings;
@@ -89,11 +93,13 @@ private:
     std::unique_ptr<ShadowMap> shadow_map_;
     std::unique_ptr<PostProcess> post_process_;
     std::unique_ptr<HiZPyramid> hiz_;
+    std::unique_ptr<TAAPass> taa_;
 
     // material textures
     VkDescriptorSetLayout material_layout_ = VK_NULL_HANDLE;
     VkDescriptorPool material_pool_ = VK_NULL_HANDLE;
     std::unique_ptr<Texture> default_texture_;
+    std::unique_ptr<Texture> default_normal_texture_;
 
     // command resources
     VkCommandPool command_pool_ = VK_NULL_HANDLE;
@@ -109,6 +115,10 @@ private:
     uint32_t image_index_ = 0;
 
     glm::mat4 prev_view_proj_{1.0f};
+    glm::mat4 prev_view_proj_unjittered_{1.0f};
+    uint32_t jitter_index_ = 0;
+    glm::vec2 current_jitter_{0.0f};
+    glm::vec2 prev_jitter_{0.0f};
 
     static constexpr uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 };

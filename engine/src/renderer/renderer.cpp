@@ -18,6 +18,16 @@
 
 namespace engine {
 
+static float halton(int index, int base) {
+    float f = 1.0f, result = 0.0f;
+    while (index > 0) {
+        f /= static_cast<float>(base);
+        result += f * static_cast<float>(index % base);
+        index /= base;
+    }
+    return result;
+}
+
 Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
                    const Swapchain& swapchain, const std::string& shader_dir)
     : context_(context), allocator_(allocator), swapchain_(swapchain) {
@@ -25,25 +35,29 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
     gbuffer_ = std::make_unique<GBuffer>(context, swapchain.extent().width, swapchain.extent().height);
     descriptors_ = std::make_unique<Descriptors>(allocator, context.device(), MAX_FRAMES_IN_FLIGHT);
 
-    // material texture descriptor set layout (set 1)
+    // material texture descriptor set layout (set 1) — albedo + normal map
     {
-        VkDescriptorSetLayoutBinding tex_binding{};
-        tex_binding.binding = 0;
-        tex_binding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        tex_binding.descriptorCount = 1;
-        tex_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        std::array<VkDescriptorSetLayoutBinding, 2> tex_bindings{};
+        tex_bindings[0].binding = 0;
+        tex_bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        tex_bindings[0].descriptorCount = 1;
+        tex_bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+        tex_bindings[1].binding = 1;
+        tex_bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        tex_bindings[1].descriptorCount = 1;
+        tex_bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
         VkDescriptorSetLayoutCreateInfo layout_info{};
         layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-        layout_info.bindingCount = 1;
-        layout_info.pBindings = &tex_binding;
+        layout_info.bindingCount = static_cast<uint32_t>(tex_bindings.size());
+        layout_info.pBindings = tex_bindings.data();
 
         if (vkCreateDescriptorSetLayout(context.device(), &layout_info, nullptr,
                                          &material_layout_) != VK_SUCCESS) {
             throw std::runtime_error("Failed to create material descriptor set layout");
         }
 
-        VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256};
+        VkDescriptorPoolSize pool_size{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 512};
         VkDescriptorPoolCreateInfo pool_info{};
         pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         pool_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
@@ -57,11 +71,15 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         }
     }
 
-    // default 1x1 white texture
+    // default textures
     {
         uint8_t white[4] = {255, 255, 255, 255};
         default_texture_ = std::make_unique<Texture>(context, allocator, white, 1, 1);
-        auto ds = allocate_material_set(*default_texture_);
+
+        uint8_t flat_normal[4] = {128, 128, 255, 255}; // tangent-space (0, 0, 1)
+        default_normal_texture_ = std::make_unique<Texture>(context, allocator, flat_normal, 1, 1, true);
+
+        auto ds = allocate_material_set(*default_texture_, *default_normal_texture_);
         default_texture_->set_descriptor_set(ds);
     }
 
@@ -138,17 +156,24 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
     lighting_->bind_shadow_map(shadow_map_->array_view(), shadow_map_->sampler());
 
     post_process_ = std::make_unique<PostProcess>(context, swapchain, *gbuffer_, shader_dir);
-    post_process_->bind_hdr_input(lighting_->hdr_view(), lighting_->hdr_sampler());
+    for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; f++) {
+        post_process_->bind_hdr_input(f, lighting_->hdr_view(), lighting_->hdr_sampler());
+    }
 
     hiz_ = std::make_unique<HiZPyramid>(context, allocator,
         swapchain.extent().width, swapchain.extent().height,
+        gbuffer_->depth_view(), gbuffer_->sampler(), shader_dir);
+
+    taa_ = std::make_unique<TAAPass>(context, allocator,
+        swapchain.extent().width, swapchain.extent().height,
+        lighting_->hdr_view(), lighting_->hdr_sampler(),
         gbuffer_->depth_view(), gbuffer_->sampler(), shader_dir);
 
     create_command_resources();
     create_sync_objects();
 }
 
-VkDescriptorSet Renderer::allocate_material_set(const Texture& texture) {
+VkDescriptorSet Renderer::allocate_material_set(const Texture& albedo_tex, const Texture& normal_tex) {
     VkDescriptorSetAllocateInfo alloc_info{};
     alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
     alloc_info.descriptorPool = material_pool_;
@@ -160,21 +185,34 @@ VkDescriptorSet Renderer::allocate_material_set(const Texture& texture) {
         throw std::runtime_error("Failed to allocate material descriptor set");
     }
 
-    VkDescriptorImageInfo img_info{};
-    img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    img_info.imageView = texture.view();
-    img_info.sampler = texture.sampler();
+    std::array<VkDescriptorImageInfo, 2> img_infos{};
+    img_infos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    img_infos[0].imageView = albedo_tex.view();
+    img_infos[0].sampler = albedo_tex.sampler();
+    img_infos[1].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    img_infos[1].imageView = normal_tex.view();
+    img_infos[1].sampler = normal_tex.sampler();
 
-    VkWriteDescriptorSet write{};
-    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    write.dstSet = ds;
-    write.dstBinding = 0;
-    write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-    write.descriptorCount = 1;
-    write.pImageInfo = &img_info;
+    std::array<VkWriteDescriptorSet, 2> writes{};
+    writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[0].dstSet = ds;
+    writes[0].dstBinding = 0;
+    writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[0].descriptorCount = 1;
+    writes[0].pImageInfo = &img_infos[0];
+    writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    writes[1].dstSet = ds;
+    writes[1].dstBinding = 1;
+    writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    writes[1].descriptorCount = 1;
+    writes[1].pImageInfo = &img_infos[1];
 
-    vkUpdateDescriptorSets(context_.device(), 1, &write, 0, nullptr);
+    vkUpdateDescriptorSets(context_.device(), static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     return ds;
+}
+
+VkDescriptorSet Renderer::allocate_material_set(const Texture& albedo_tex) {
+    return allocate_material_set(albedo_tex, *default_normal_texture_);
 }
 
 Renderer::~Renderer() {
@@ -183,6 +221,7 @@ Renderer::~Renderer() {
     allocator_.flush_deferred();
 
     default_texture_.reset();
+    default_normal_texture_.reset();
     if (material_pool_) vkDestroyDescriptorPool(device, material_pool_, nullptr);
     if (material_layout_) vkDestroyDescriptorSetLayout(device, material_layout_, nullptr);
 
@@ -275,6 +314,9 @@ bool Renderer::begin_frame() {
 void Renderer::render(const Camera& camera, Gui& gui) {
     auto cmd = command_buffers_[current_frame_];
 
+    // save previous VP before geometry_pass overwrites it
+    glm::mat4 prev_vp_for_taa = prev_view_proj_unjittered_;
+
     shadow_pass(cmd, camera);
     geometry_pass(cmd, camera);
 
@@ -294,6 +336,34 @@ void Renderer::render(const Camera& camera, Gui& gui) {
     }
 
     lighting_pass(cmd, camera);
+
+    // TAA resolve between lighting and post-process
+    if (taa_enabled && taa_) {
+        float aspect = static_cast<float>(swapchain_.extent().width) /
+                       static_cast<float>(swapchain_.extent().height);
+
+        TAAPass::Uniforms taa_uniforms{};
+        taa_uniforms.inv_view_proj = glm::inverse(prev_view_proj_unjittered_); // current frame
+        taa_uniforms.prev_view_proj = prev_vp_for_taa; // previous frame
+
+        TAAPass::PushData taa_push{};
+        taa_push.jitter = glm::vec4(current_jitter_, prev_jitter_);
+        taa_push.resolution = glm::vec4(
+            swapchain_.extent().width, swapchain_.extent().height,
+            1.0f / swapchain_.extent().width, 1.0f / swapchain_.extent().height);
+        taa_push.params = glm::vec4(0.1f, jitter_index_ <= 1 ? 1.0f : 0.0f, taa_sharpness, 0.0f);
+
+        taa_->resolve(cmd, current_frame_, taa_uniforms, taa_push);
+        taa_->swap_history();
+
+        post_process_->bind_hdr_input(current_frame_,
+            taa_->resolved_view(), taa_->resolved_sampler(),
+            VK_IMAGE_LAYOUT_GENERAL);
+    } else {
+        post_process_->bind_hdr_input(current_frame_,
+            lighting_->hdr_view(), lighting_->hdr_sampler());
+    }
+
     post_process_pass(cmd);
 
     // ImGui on top (inside the post-process render pass which is still open)
@@ -457,11 +527,31 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
         break;
     }
 
+    // compute jitter for TAA
+    if (taa_enabled) {
+        prev_jitter_ = current_jitter_;
+        int idx = static_cast<int>((jitter_index_++) % 16) + 1;
+        float jx = halton(idx, 2) - 0.5f;
+        float jy = halton(idx, 3) - 0.5f;
+        current_jitter_ = glm::vec2(
+            jx * 2.0f / static_cast<float>(swapchain_.extent().width),
+            jy * 2.0f / static_cast<float>(swapchain_.extent().height));
+    } else {
+        current_jitter_ = glm::vec2(0.0f);
+        prev_jitter_ = glm::vec2(0.0f);
+    }
+
+    glm::mat4 view = camera.view_matrix();
+    glm::mat4 proj_unjittered = camera.projection_matrix(aspect);
+    glm::mat4 proj = taa_enabled
+        ? camera.jittered_projection_matrix(aspect, current_jitter_)
+        : proj_unjittered;
+
     // update UBO
     UniformData ubo{};
     ubo.model = glm::mat4(1.0f);
-    ubo.view = camera.view_matrix();
-    ubo.projection = camera.projection_matrix(aspect);
+    ubo.view = view;
+    ubo.projection = proj; // jittered for G-Buffer rendering
     ubo.light_dir = glm::vec4(light_dir, 0.0f);
     ubo.light_color = glm::vec4(light_comp.color, light_comp.intensity);
     ubo.ambient_color = glm::vec4(light_comp.ambient_color, light_comp.ambient_intensity);
@@ -512,9 +602,9 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
                             0, 1, &ds, 0, nullptr);
 
-    // frustum culling
+    // frustum culling — use unjittered VP to avoid popping
     Frustum frustum;
-    frustum.extract(ubo.projection * ubo.view);
+    frustum.extract(proj_unjittered * view);
 
     draw_calls = 0;
     culled_objects = 0;
@@ -641,7 +731,8 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
 
     vkCmdEndRenderPass(cmd);
 
-    prev_view_proj_ = ubo.projection * ubo.view;
+    prev_view_proj_ = proj_unjittered * view; // unjittered for occlusion culling
+    prev_view_proj_unjittered_ = prev_view_proj_;
 }
 
 void Renderer::lighting_pass(VkCommandBuffer cmd, const Camera& /*camera*/) {
@@ -680,7 +771,7 @@ void Renderer::post_process_pass(VkCommandBuffer cmd) {
     vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, post_process_->pipeline());
 
-    VkDescriptorSet ds = post_process_->descriptor_set();
+    VkDescriptorSet ds = post_process_->descriptor_set(current_frame_);
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, post_process_->pipeline_layout(),
                             0, 1, &ds, 0, nullptr);
 

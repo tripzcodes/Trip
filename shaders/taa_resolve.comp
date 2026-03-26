@@ -1,0 +1,105 @@
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(set = 0, binding = 0) uniform TAAUniforms {
+    mat4 inv_view_proj;
+    mat4 prev_view_proj;
+};
+
+layout(set = 0, binding = 1) uniform sampler2D current_hdr;
+layout(set = 0, binding = 2) uniform sampler2D history_buffer;
+layout(set = 0, binding = 3) uniform sampler2D depth_buffer;
+layout(set = 0, binding = 4, rgba16f) writeonly uniform image2D resolved_output;
+
+layout(push_constant) uniform PC {
+    vec4 jitter;       // xy = current jitter (NDC), zw = previous jitter
+    vec4 resolution;   // xy = width/height, zw = 1/width, 1/height
+    vec4 params;       // x = blend_alpha, y = first_frame
+};
+
+vec3 rgb_to_ycocg(vec3 c) {
+    return vec3(
+        0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
+        0.5 * c.r - 0.5 * c.b,
+       -0.25 * c.r + 0.5 * c.g - 0.25 * c.b);
+}
+
+vec3 ycocg_to_rgb(vec3 c) {
+    return vec3(
+        c.x + c.y - c.z,
+        c.x + c.z,
+        c.x - c.y - c.z);
+}
+
+void main() {
+    ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
+    if (pos.x >= int(resolution.x) || pos.y >= int(resolution.y)) return;
+
+    vec2 uv = (vec2(pos) + 0.5) * resolution.zw;
+
+    // sample current frame HDR
+    vec3 current_color = texture(current_hdr, uv).rgb;
+
+    // first frame — no history, output current directly
+    if (params.y > 0.5) {
+        imageStore(resolved_output, pos, vec4(current_color, 1.0));
+        return;
+    }
+
+    // reconstruct world position from depth
+    float depth = texture(depth_buffer, uv).r;
+    vec2 ndc = uv * 2.0 - 1.0;
+    ndc -= jitter.xy; // unjitter to get geometric NDC
+    vec4 clip = vec4(ndc, depth, 1.0);
+    vec4 world_pos = inv_view_proj * clip;
+    world_pos /= world_pos.w;
+
+    // reproject to previous frame
+    vec4 prev_clip = prev_view_proj * world_pos;
+    vec2 prev_ndc = prev_clip.xy / prev_clip.w;
+    prev_ndc -= jitter.zw; // unjitter previous frame
+    vec2 prev_uv = prev_ndc * 0.5 + 0.5;
+
+    // sample history with bilinear filtering
+    vec3 history_color = texture(history_buffer, prev_uv).rgb;
+
+    // neighborhood clamping in YCoCg — 3x3 min/max
+    vec3 neighborhood_min = vec3(1e10);
+    vec3 neighborhood_max = vec3(-1e10);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 offset_uv = uv + vec2(x, y) * resolution.zw;
+            vec3 s = rgb_to_ycocg(texture(current_hdr, offset_uv).rgb);
+            neighborhood_min = min(neighborhood_min, s);
+            neighborhood_max = max(neighborhood_max, s);
+        }
+    }
+
+    // clip history to neighborhood AABB in YCoCg
+    vec3 history_ycocg = rgb_to_ycocg(history_color);
+    vec3 clamped = clamp(history_ycocg, neighborhood_min, neighborhood_max);
+    history_color = ycocg_to_rgb(clamped);
+
+    // blend factor — increase when history is unreliable
+    float alpha = params.x;
+    if (prev_uv.x < 0.0 || prev_uv.x > 1.0 || prev_uv.y < 0.0 || prev_uv.y > 1.0) {
+        alpha = 1.0; // disocclusion — use current frame only
+    }
+
+    vec3 blended = mix(history_color, current_color, alpha);
+
+    vec3 result = blended;
+
+    // CAS (Contrast Adaptive Sharpening) — params.z controls intensity
+    float sharpness = params.z;
+    if (sharpness > 0.001) {
+        vec3 n_up    = texture(current_hdr, uv + vec2(0, -resolution.w)).rgb;
+        vec3 n_down  = texture(current_hdr, uv + vec2(0,  resolution.w)).rgb;
+        vec3 n_left  = texture(current_hdr, uv + vec2(-resolution.z, 0)).rgb;
+        vec3 n_right = texture(current_hdr, uv + vec2( resolution.z, 0)).rgb;
+        result = blended + (blended * 4.0 - (n_up + n_down + n_left + n_right)) * sharpness;
+        result = max(result, vec3(0.0));
+    }
+
+    imageStore(resolved_output, pos, vec4(result, 1.0));
+}

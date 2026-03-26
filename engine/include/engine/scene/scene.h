@@ -13,6 +13,7 @@ public:
 
     entt::entity create(const std::string& name = "Entity");
     void destroy(entt::entity entity);
+    void clear() { registry_.clear(); }
 
     void set_parent(entt::entity child, entt::entity parent);
     glm::mat4 world_transform(entt::entity entity) const;

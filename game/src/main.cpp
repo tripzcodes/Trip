@@ -50,10 +50,11 @@ int main() {
         float f = 200.0f;
         glm::vec3 fc{0.5f, 0.5f, 0.5f};
         glm::vec3 fn{0.0f, 1.0f, 0.0f};
+        glm::vec4 ft{1, 0, 0, 1}; // floor tangent along +X
         auto floor_mesh = std::make_shared<engine::Mesh>(allocator,
             std::vector<engine::Vertex>{
-                {{-f, 0, -f}, fn, fc, {0, 0}}, {{ f, 0, -f}, fn, fc, {1, 0}},
-                {{ f, 0,  f}, fn, fc, {1, 1}}, {{-f, 0,  f}, fn, fc, {0, 1}},
+                {{-f, 0, -f}, fn, fc, {0, 0}, ft}, {{ f, 0, -f}, fn, fc, {1, 0}, ft},
+                {{ f, 0,  f}, fn, fc, {1, 1}, ft}, {{-f, 0,  f}, fn, fc, {0, 1}, ft},
             },
             std::vector<uint32_t>{0, 1, 2, 2, 3, 0});
         auto floor_ent = scene.create("Floor");
@@ -71,6 +72,7 @@ int main() {
         struct LoadedModel {
             std::shared_ptr<engine::Mesh> mesh;
             std::shared_ptr<engine::Texture> texture;
+            std::shared_ptr<engine::Texture> normal_texture;
             VkDescriptorSet tex_set = VK_NULL_HANDLE;
         };
         auto load_model = [&](const std::string& obj_path) -> LoadedModel {
@@ -80,7 +82,13 @@ int main() {
             if (!data.diffuse_texture_path.empty()) {
                 lm.texture = std::make_shared<engine::Texture>(
                     context, allocator, data.diffuse_texture_path);
-                lm.tex_set = renderer.allocate_material_set(*lm.texture);
+                if (!data.normal_texture_path.empty()) {
+                    lm.normal_texture = std::make_shared<engine::Texture>(
+                        context, allocator, data.normal_texture_path, true);
+                    lm.tex_set = renderer.allocate_material_set(*lm.texture, *lm.normal_texture);
+                } else {
+                    lm.tex_set = renderer.allocate_material_set(*lm.texture);
+                }
                 lm.texture->set_descriptor_set(lm.tex_set);
             }
             return lm;
@@ -222,6 +230,8 @@ int main() {
             renderer.wireframe = gui.state().wireframe;
             renderer.frustum_culling = gui.state().frustum_culling;
             renderer.occlusion_culling = gui.state().occlusion_culling;
+            renderer.taa_enabled = gui.state().taa_enabled;
+            renderer.taa_sharpness = gui.state().taa_sharpness;
             renderer.show_cascade_debug = gui.state().show_cascade_debug;
             renderer.shadow_mode = static_cast<engine::ShadowMode>(gui.state().shadow_mode);
             std::copy(gui.state().clear_color, gui.state().clear_color + 3, renderer.clear_color);

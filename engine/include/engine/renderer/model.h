@@ -12,6 +12,7 @@ class Allocator;
 struct ModelData {
     std::shared_ptr<Mesh> mesh;
     std::string diffuse_texture_path; // empty if no .mtl diffuse map
+    std::string normal_texture_path;  // empty if no normal/bump map
 };
 
 class Model {

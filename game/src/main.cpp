@@ -16,6 +16,7 @@
 #include <engine/world/chunk.h>
 #include <engine/world/terrain.h>
 #include <engine/scene/serializer.h>
+#include <engine/renderer/text.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -39,6 +40,10 @@ int main() {
         engine::Gui gui(window.handle(), context, swapchain, renderer.lighting_render_pass());
 
         input.set_cursor_captured(true);
+
+        engine::TextRenderer text(context, allocator, swapchain,
+            renderer.lighting_render_pass(),
+            assets_dir + "/fonts/JetBrainsMono-Regular.ttf", shader_dir);
 
         engine::Scene scene;
         renderer.set_scene(&scene);
@@ -273,8 +278,15 @@ int main() {
             gui.begin_frame(scene, renderer.draw_calls, renderer.culled_objects,
                             chunks.loaded_chunks());
 
+            // queue in-game text
+            auto cam_p = camera.position();
+            char pos_buf[128];
+            snprintf(pos_buf, sizeof(pos_buf), "%.0f, %.0f, %.0f", cam_p.x, cam_p.y, cam_p.z);
+            float win_h = static_cast<float>(swapchain.extent().height);
+            text.draw_text(pos_buf, 10, win_h - 30, {0.8f, 0.8f, 0.8f}, 0.8f);
+
             renderer.begin_frame();
-            renderer.render(camera, gui);
+            renderer.render(camera, gui, &text);
             renderer.end_frame();
         }
 

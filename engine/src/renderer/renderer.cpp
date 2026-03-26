@@ -151,7 +151,8 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
 
     shadow_map_ = std::make_unique<ShadowMap>(context,
         shader_dir + "/shadow.vert.spv",
-        shader_dir + "/shadow.frag.spv");
+        shader_dir + "/shadow.frag.spv",
+        shader_dir + "/shadow_instanced.vert.spv");
 
     lighting_->bind_shadow_map(shadow_map_->array_view(), shadow_map_->sampler());
 
@@ -469,11 +470,17 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
             stable_min, stable_max);
     }
 
-    // render casters into each cascade with per-cascade frustum culling
-    struct ShadowPush { glm::mat4 vp; glm::mat4 model; };
-
+    // batch all casters by mesh for instanced shadow rendering
     auto renderable = scene_->view<TransformComponent, MeshComponent>();
     bool fixed = (shadow_mode == ShadowMode::Fixed);
+
+    std::unordered_map<Mesh*, std::vector<InstanceData>> shadow_batches;
+    for (auto entity : renderable) {
+        auto& mesh_comp = renderable.get<MeshComponent>(entity);
+        InstanceData inst{};
+        inst.model = scene_->world_transform(entity);
+        shadow_batches[mesh_comp.mesh.get()].push_back(inst);
+    }
 
     for (uint32_t c = 0; c < CASCADE_COUNT; c++) {
         VkClearValue depth_clear{};
@@ -489,22 +496,21 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
 
         vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        // in fixed mode, only render geometry into cascade 0
         if (!fixed || c == 0) {
-            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_map_->pipeline());
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, shadow_map_->instanced_pipeline());
 
-            for (auto entity : renderable) {
-                auto& mesh_comp = renderable.get<MeshComponent>(entity);
+            glm::mat4 light_vp = shadow_map_->cascade(c).view_proj;
+            vkCmdPushConstants(cmd, shadow_map_->pipeline_layout(),
+                               VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &light_vp);
 
-                ShadowPush push{};
-                push.vp = shadow_map_->cascade(c).view_proj;
-                push.model = scene_->world_transform(entity);
+            instance_buffer_->reset();
 
-                vkCmdPushConstants(cmd, shadow_map_->pipeline_layout(),
-                                   VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(ShadowPush), &push);
-
-                mesh_comp.mesh->bind(cmd);
-                mesh_comp.mesh->draw(cmd);
+            for (auto& [mesh, instances] : shadow_batches) {
+                uint32_t base = instance_buffer_->push(instances);
+                uint32_t count = static_cast<uint32_t>(instances.size());
+                mesh->bind(cmd);
+                instance_buffer_->bind(cmd);
+                vkCmdDrawIndexed(cmd, mesh->index_count(), count, 0, 0, base);
             }
         }
 
@@ -709,14 +715,14 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
         vkCmdEndRenderPass(cmd);
 
     } else {
-        // === CPU PATH (existing) ===
+        // === CPU PATH — all instanced, no pipeline switching ===
         vkCmdBeginRenderPass(cmd, &rp_info, VK_SUBPASS_CONTENTS_INLINE);
 
-        auto& active_pipeline = wireframe ? *geom_wire_pipeline_ : *geom_fill_pipeline_;
-        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
+        auto& inst_pipeline = wireframe ? *instanced_wire_pipeline_ : *instanced_fill_pipeline_;
+        vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.handle());
 
         VkDescriptorSet ds = descriptors_->set(current_frame_);
-        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
                                 0, 1, &ds, 0, nullptr);
 
         std::unordered_map<BatchKey, std::vector<InstanceData>, BatchKeyHash> batches;
@@ -768,39 +774,15 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
         instance_buffer_->reset();
 
         for (auto& [key, instances] : batches) {
-            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
                                     1, 1, &key.mat_set, 0, nullptr);
 
-            if (instances.size() == 1) {
-                struct PushData { glm::mat4 model; glm::vec4 albedo; glm::vec4 material; };
-                PushData push{instances[0].model, instances[0].albedo, instances[0].material};
-                vkCmdPushConstants(cmd, active_pipeline.layout(),
-                                   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
-                                   0, sizeof(PushData), &push);
-                key.mesh->bind(cmd);
-                key.mesh->draw(cmd);
-                draw_calls++;
-            } else {
-                auto& inst_pipeline = wireframe ? *instanced_wire_pipeline_ : *instanced_fill_pipeline_;
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.handle());
-
-                VkDescriptorSet ds2 = descriptors_->set(current_frame_);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
-                                        0, 1, &ds2, 0, nullptr);
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, inst_pipeline.layout(),
-                                        1, 1, &key.mat_set, 0, nullptr);
-
-                uint32_t base = instance_buffer_->push(instances);
-                uint32_t count = static_cast<uint32_t>(instances.size());
-                key.mesh->bind(cmd);
-                instance_buffer_->bind(cmd);
-                vkCmdDrawIndexed(cmd, key.mesh->index_count(), count, 0, 0, base);
-                draw_calls++;
-
-                vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.handle());
-                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, active_pipeline.layout(),
-                                        0, 1, &ds, 0, nullptr);
-            }
+            uint32_t base = instance_buffer_->push(instances);
+            uint32_t count = static_cast<uint32_t>(instances.size());
+            key.mesh->bind(cmd);
+            instance_buffer_->bind(cmd);
+            vkCmdDrawIndexed(cmd, key.mesh->index_count(), count, 0, 0, base);
+            draw_calls++;
         }
 
         vkCmdEndRenderPass(cmd);

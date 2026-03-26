@@ -1,6 +1,7 @@
 #include <engine/renderer/shadow_map.h>
 #include <engine/renderer/vulkan_context.h>
 #include <engine/renderer/mesh.h>
+#include <engine/renderer/instance_buffer.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -22,17 +23,22 @@ static std::vector<char> read_file(const std::string& path) {
 }
 
 ShadowMap::ShadowMap(const VulkanContext& context, const std::string& vert_path,
-                     const std::string& frag_path)
+                     const std::string& frag_path,
+                     const std::string& instanced_vert_path)
     : context_(context) {
     create_image();
     create_render_pass();
     create_views_and_framebuffers();
     create_sampler();
     create_pipeline(vert_path, frag_path);
+    if (!instanced_vert_path.empty()) {
+        create_instanced_pipeline(instanced_vert_path, frag_path);
+    }
 }
 
 ShadowMap::~ShadowMap() {
     auto device = context_.device();
+    if (instanced_pipeline_) { vkDestroyPipeline(device, instanced_pipeline_, nullptr); }
     if (pipeline_) { vkDestroyPipeline(device, pipeline_, nullptr); }
     if (pipeline_layout_) { vkDestroyPipelineLayout(device, pipeline_layout_, nullptr); }
     if (sampler_) { vkDestroySampler(device, sampler_, nullptr); }
@@ -445,6 +451,135 @@ void ShadowMap::compute_cascaded(const glm::mat4& camera_view, const glm::mat4& 
 
         last_split = split;
     }
+}
+
+void ShadowMap::create_instanced_pipeline(const std::string& vert_path, const std::string& frag_path) {
+    auto device = context_.device();
+
+    auto vert_code = read_file(vert_path);
+    auto frag_code = read_file(frag_path);
+
+    VkShaderModuleCreateInfo vert_mi{};
+    vert_mi.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    vert_mi.codeSize = vert_code.size();
+    vert_mi.pCode = reinterpret_cast<const uint32_t*>(vert_code.data());
+
+    VkShaderModuleCreateInfo frag_mi{};
+    frag_mi.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    frag_mi.codeSize = frag_code.size();
+    frag_mi.pCode = reinterpret_cast<const uint32_t*>(frag_code.data());
+
+    VkShaderModule vert_mod, frag_mod;
+    vkCreateShaderModule(device, &vert_mi, nullptr, &vert_mod);
+    vkCreateShaderModule(device, &frag_mi, nullptr, &frag_mod);
+
+    VkPipelineShaderStageCreateInfo stages[2]{};
+    stages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
+    stages[0].module = vert_mod;
+    stages[0].pName = "main";
+    stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+    stages[1].module = frag_mod;
+    stages[1].pName = "main";
+
+    // two vertex bindings: mesh (binding 0) + instances (binding 1)
+    auto mesh_binding = Vertex::binding_description();
+    auto mesh_attrs = Vertex::attribute_descriptions();
+    auto inst_binding = InstanceBuffer::binding_description();
+    auto inst_attrs = InstanceBuffer::attribute_descriptions();
+
+    std::array<VkVertexInputBindingDescription, 2> bindings = {mesh_binding, inst_binding};
+
+    std::vector<VkVertexInputAttributeDescription> all_attrs;
+    for (const auto& a : mesh_attrs) all_attrs.push_back(a);
+    for (const auto& a : inst_attrs) all_attrs.push_back(a);
+
+    VkPipelineVertexInputStateCreateInfo vi{};
+    vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vi.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+    vi.pVertexBindingDescriptions = bindings.data();
+    vi.vertexAttributeDescriptionCount = static_cast<uint32_t>(all_attrs.size());
+    vi.pVertexAttributeDescriptions = all_attrs.data();
+
+    VkPipelineInputAssemblyStateCreateInfo ia{};
+    ia.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    ia.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    VkViewport viewport{};
+    viewport.width = static_cast<float>(SHADOW_MAP_SIZE);
+    viewport.height = static_cast<float>(SHADOW_MAP_SIZE);
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.extent = {SHADOW_MAP_SIZE, SHADOW_MAP_SIZE};
+
+    VkPipelineViewportStateCreateInfo vp{};
+    vp.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    vp.viewportCount = 1;
+    vp.pViewports = &viewport;
+    vp.scissorCount = 1;
+    vp.pScissors = &scissor;
+
+    VkPipelineRasterizationStateCreateInfo rast{};
+    rast.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rast.polygonMode = VK_POLYGON_MODE_FILL;
+    rast.lineWidth = 1.0f;
+    rast.cullMode = VK_CULL_MODE_NONE;
+    rast.depthBiasEnable = VK_TRUE;
+    rast.depthBiasConstantFactor = 1.0f;
+    rast.depthBiasSlopeFactor = 1.5f;
+
+    VkPipelineMultisampleStateCreateInfo ms{};
+    ms.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    ms.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    VkPipelineDepthStencilStateCreateInfo ds{};
+    ds.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    ds.depthTestEnable = VK_TRUE;
+    ds.depthWriteEnable = VK_TRUE;
+    ds.depthCompareOp = VK_COMPARE_OP_LESS_OR_EQUAL;
+
+    VkPipelineColorBlendStateCreateInfo cb{};
+    cb.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+
+    // push constant: just light_view_proj (1 mat4 = 64 bytes)
+    VkPushConstantRange push_range{};
+    push_range.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+    push_range.size = sizeof(glm::mat4);
+
+    // reuse the existing pipeline layout — push constant range is smaller but compatible
+    // actually need a separate layout for the smaller push constant
+    VkPipelineLayoutCreateInfo layout_info{};
+    layout_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layout_info.pushConstantRangeCount = 1;
+    layout_info.pPushConstantRanges = &push_range;
+
+    // reuse pipeline_layout_ since Vulkan allows push constants to be partially written
+    // as long as we don't exceed the declared range. The existing layout declares 128 bytes,
+    // and we only push 64. This is valid.
+
+    VkGraphicsPipelineCreateInfo pi{};
+    pi.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    pi.stageCount = 2;
+    pi.pStages = stages;
+    pi.pVertexInputState = &vi;
+    pi.pInputAssemblyState = &ia;
+    pi.pViewportState = &vp;
+    pi.pRasterizationState = &rast;
+    pi.pMultisampleState = &ms;
+    pi.pDepthStencilState = &ds;
+    pi.pColorBlendState = &cb;
+    pi.layout = pipeline_layout_; // reuse — push 64 bytes out of 128 declared
+    pi.renderPass = render_pass_;
+
+    if (vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pi, nullptr,
+                                   &instanced_pipeline_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create instanced shadow pipeline");
+    }
+
+    vkDestroyShaderModule(device, vert_mod, nullptr);
+    vkDestroyShaderModule(device, frag_mod, nullptr);
 }
 
 } // namespace engine

@@ -22,7 +22,8 @@ enum class ShadowMode {
 class ShadowMap {
 public:
     ShadowMap(const VulkanContext& context, const std::string& vert_path,
-              const std::string& frag_path);
+              const std::string& frag_path,
+              const std::string& instanced_vert_path = "");
     ~ShadowMap();
 
     ShadowMap(const ShadowMap&) = delete;
@@ -33,6 +34,7 @@ public:
     VkImageView array_view() const { return array_view_; }
     VkSampler sampler() const { return sampler_; }
     VkPipeline pipeline() const { return pipeline_; }
+    VkPipeline instanced_pipeline() const { return instanced_pipeline_; }
     VkPipelineLayout pipeline_layout() const { return pipeline_layout_; }
 
     struct CascadeData {
@@ -57,6 +59,7 @@ private:
     void create_views_and_framebuffers();
     void create_sampler();
     void create_pipeline(const std::string& vert_path, const std::string& frag_path);
+    void create_instanced_pipeline(const std::string& vert_path, const std::string& frag_path);
 
     const VulkanContext& context_;
 
@@ -68,6 +71,7 @@ private:
     VkRenderPass render_pass_ = VK_NULL_HANDLE;
     VkSampler sampler_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
+    VkPipeline instanced_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
 
     CascadeData cascades_[CASCADE_COUNT]{};

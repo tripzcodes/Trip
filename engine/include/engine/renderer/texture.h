@@ -14,12 +14,13 @@ class VulkanContext;
 class Texture {
 public:
     // load from file (PNG/JPG/TGA via stb_image)
+    // linear = true for normal maps (VK_FORMAT_R8G8B8A8_UNORM instead of SRGB)
     Texture(const VulkanContext& context, const Allocator& allocator,
-            const std::string& path);
+            const std::string& path, bool linear = false);
 
     // create from raw RGBA pixels (e.g. 1x1 white default)
     Texture(const VulkanContext& context, const Allocator& allocator,
-            const uint8_t* pixels, uint32_t width, uint32_t height);
+            const uint8_t* pixels, uint32_t width, uint32_t height, bool linear = false);
 
     ~Texture();
 
@@ -35,6 +36,7 @@ public:
 private:
     void create_image(const uint8_t* pixels, uint32_t width, uint32_t height);
     void create_image_view();
+    VkFormat format_ = VK_FORMAT_R8G8B8A8_SRGB;
     void create_sampler();
     uint32_t find_memory_type(uint32_t type_filter, VkMemoryPropertyFlags properties);
 

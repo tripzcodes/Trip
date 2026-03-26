@@ -11,8 +11,9 @@
 namespace engine {
 
 Texture::Texture(const VulkanContext& context, const Allocator& allocator,
-                 const std::string& path)
-    : context_(context), allocator_(allocator) {
+                 const std::string& path, bool linear)
+    : context_(context), allocator_(allocator),
+      format_(linear ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB) {
     int w, h, channels;
     uint8_t* pixels = stbi_load(path.c_str(), &w, &h, &channels, STBI_rgb_alpha);
     if (!pixels) {
@@ -27,8 +28,9 @@ Texture::Texture(const VulkanContext& context, const Allocator& allocator,
 }
 
 Texture::Texture(const VulkanContext& context, const Allocator& allocator,
-                 const uint8_t* pixels, uint32_t width, uint32_t height)
-    : context_(context), allocator_(allocator) {
+                 const uint8_t* pixels, uint32_t width, uint32_t height, bool linear)
+    : context_(context), allocator_(allocator),
+      format_(linear ? VK_FORMAT_R8G8B8A8_UNORM : VK_FORMAT_R8G8B8A8_SRGB) {
     create_image(pixels, width, height);
     create_image_view();
     create_sampler();
@@ -66,7 +68,7 @@ void Texture::create_image(const uint8_t* pixels, uint32_t width, uint32_t heigh
     image_info.extent = { width, height, 1 };
     image_info.mipLevels = mip_levels_;
     image_info.arrayLayers = 1;
-    image_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    image_info.format = format_;
     image_info.tiling = VK_IMAGE_TILING_OPTIMAL;
     image_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     image_info.usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -242,7 +244,7 @@ void Texture::create_image_view() {
     view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     view_info.image = image_;
     view_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
-    view_info.format = VK_FORMAT_R8G8B8A8_SRGB;
+    view_info.format = format_;
     view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     view_info.subresourceRange.baseMipLevel = 0;
     view_info.subresourceRange.levelCount = mip_levels_;

@@ -4,6 +4,7 @@
 #include <engine/renderer/mesh.h>
 #include <engine/renderer/gui.h>
 #include <engine/core/camera.h>
+#include <engine/renderer/skinned_mesh.h>
 #include <engine/renderer/text.h>
 #include <engine/scene/scene.h>
 #include <engine/scene/components.h>
@@ -144,6 +145,34 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
     instanced_wire_pipeline_ = std::make_unique<Pipeline>(context.device(), inst_wire_config);
 
     instance_buffer_ = std::make_unique<InstanceBuffer>(allocator, 10000);
+    shadow_instance_buffer_ = std::make_unique<InstanceBuffer>(allocator, 10000);
+
+    // skinned animation pipeline
+    bone_buffer_ = std::make_unique<BoneBuffer>(context, allocator);
+    {
+        auto skin_binding = SkinnedVertex::binding_description();
+        auto skin_attrs = SkinnedVertex::attribute_descriptions();
+
+        VkPipelineVertexInputStateCreateInfo skin_vi{};
+        skin_vi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        skin_vi.vertexBindingDescriptionCount = 1;
+        skin_vi.pVertexBindingDescriptions = &skin_binding;
+        skin_vi.vertexAttributeDescriptionCount = static_cast<uint32_t>(skin_attrs.size());
+        skin_vi.pVertexAttributeDescriptions = skin_attrs.data();
+
+        PipelineConfig skin_config{};
+        skin_config.render_pass = gbuffer_->render_pass();
+        skin_config.extent = swapchain.extent();
+        skin_config.vert_path = shader_dir + "/gbuffer_skinned.vert.spv";
+        skin_config.frag_path = shader_dir + "/gbuffer.frag.spv";
+        skin_config.vertex_input = skin_vi;
+        skin_config.descriptor_layouts = { descriptors_->layout(), material_layout_, bone_buffer_->layout() };
+        skin_config.color_attachment_count = 3;
+        skin_config.use_push_constants = true;
+        skin_config.push_constant_size = sizeof(glm::mat4) + sizeof(glm::vec4) * 2;
+
+        skinned_fill_pipeline_ = std::make_unique<Pipeline>(context.device(), skin_config);
+    }
 
     lighting_ = std::make_unique<LightingPass>(context, allocator, *gbuffer_, swapchain,
         MAX_FRAMES_IN_FLIGHT,
@@ -507,13 +536,13 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
             vkCmdPushConstants(cmd, shadow_map_->pipeline_layout(),
                                VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4), &light_vp);
 
-            instance_buffer_->reset();
+            shadow_instance_buffer_->reset();
 
             for (auto& [mesh, instances] : shadow_batches) {
-                uint32_t base = instance_buffer_->push(instances);
+                uint32_t base = shadow_instance_buffer_->push(instances);
                 uint32_t count = static_cast<uint32_t>(instances.size());
                 mesh->bind(cmd);
-                instance_buffer_->bind(cmd);
+                shadow_instance_buffer_->bind(cmd);
                 vkCmdDrawIndexed(cmd, mesh->index_count(), count, 0, 0, base);
             }
         }
@@ -716,6 +745,48 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             draw_calls++;
         }
 
+        // skinned meshes (inside same render pass)
+        auto skinned_view = scene_->view<TransformComponent, SkinnedMeshComponent, AnimationComponent>();
+        if (skinned_view.size_hint() > 0) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->handle());
+            VkDescriptorSet ubo_ds = descriptors_->set(current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                    0, 1, &ubo_ds, 0, nullptr);
+
+            for (auto entity : skinned_view) {
+                auto& sm = skinned_view.get<SkinnedMeshComponent>(entity);
+                auto& ac = skinned_view.get<AnimationComponent>(entity);
+                glm::mat4 world = scene_->world_transform(entity);
+
+                bone_buffer_->update(current_frame_, ac.player.bone_matrices());
+
+                VkDescriptorSet mat_set = default_texture_->descriptor_set();
+                glm::vec4 albedo(1.0f);
+                glm::vec4 mat_data(0.0f);
+                if (scene_->registry().all_of<MaterialComponent>(entity)) {
+                    auto& mat = scene_->registry().get<MaterialComponent>(entity);
+                    albedo = glm::vec4(mat.albedo, 1.0f);
+                    mat_data = glm::vec4(mat.metallic, mat.roughness, 0.0f, 0.0f);
+                    if (mat.texture_set != VK_NULL_HANDLE) mat_set = mat.texture_set;
+                }
+
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                        1, 1, &mat_set, 0, nullptr);
+                VkDescriptorSet bone_set = bone_buffer_->set(current_frame_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                        2, 1, &bone_set, 0, nullptr);
+
+                struct { glm::mat4 model; glm::vec4 albedo; glm::vec4 material; } push{world, albedo, mat_data};
+                vkCmdPushConstants(cmd, skinned_fill_pipeline_->layout(),
+                                   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   0, sizeof(push), &push);
+
+                sm.mesh->bind(cmd);
+                sm.mesh->draw(cmd);
+                draw_calls++;
+            }
+        }
+
         vkCmdEndRenderPass(cmd);
 
     } else {
@@ -787,6 +858,48 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             instance_buffer_->bind(cmd);
             vkCmdDrawIndexed(cmd, key.mesh->index_count(), count, 0, 0, base);
             draw_calls++;
+        }
+
+        // skinned meshes (inside same render pass)
+        auto skinned_view = scene_->view<TransformComponent, SkinnedMeshComponent, AnimationComponent>();
+        if (skinned_view.size_hint() > 0) {
+            vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->handle());
+            VkDescriptorSet ubo_ds = descriptors_->set(current_frame_);
+            vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                    0, 1, &ubo_ds, 0, nullptr);
+
+            for (auto entity : skinned_view) {
+                auto& sm = skinned_view.get<SkinnedMeshComponent>(entity);
+                auto& ac = skinned_view.get<AnimationComponent>(entity);
+                glm::mat4 world = scene_->world_transform(entity);
+
+                bone_buffer_->update(current_frame_, ac.player.bone_matrices());
+
+                VkDescriptorSet mat_set = default_texture_->descriptor_set();
+                glm::vec4 albedo(1.0f);
+                glm::vec4 mat_data(0.0f);
+                if (scene_->registry().all_of<MaterialComponent>(entity)) {
+                    auto& mat = scene_->registry().get<MaterialComponent>(entity);
+                    albedo = glm::vec4(mat.albedo, 1.0f);
+                    mat_data = glm::vec4(mat.metallic, mat.roughness, 0.0f, 0.0f);
+                    if (mat.texture_set != VK_NULL_HANDLE) mat_set = mat.texture_set;
+                }
+
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                        1, 1, &mat_set, 0, nullptr);
+                VkDescriptorSet bone_set = bone_buffer_->set(current_frame_);
+                vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, skinned_fill_pipeline_->layout(),
+                                        2, 1, &bone_set, 0, nullptr);
+
+                struct { glm::mat4 model; glm::vec4 albedo; glm::vec4 material; } push{world, albedo, mat_data};
+                vkCmdPushConstants(cmd, skinned_fill_pipeline_->layout(),
+                                   VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                                   0, sizeof(push), &push);
+
+                sm.mesh->bind(cmd);
+                sm.mesh->draw(cmd);
+                draw_calls++;
+            }
         }
 
         vkCmdEndRenderPass(cmd);

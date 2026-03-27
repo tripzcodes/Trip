@@ -9,6 +9,7 @@
 #include <engine/renderer/frustum.h>
 #include <engine/renderer/instance_buffer.h>
 #include <engine/renderer/shadow_map.h>
+#include <engine/animation/bone_buffer.h>
 #include <engine/renderer/gpu_culling.h>
 #include <engine/renderer/hiz.h>
 #include <engine/renderer/taa.h>
@@ -90,6 +91,11 @@ private:
     std::unique_ptr<Pipeline> instanced_fill_pipeline_;
     std::unique_ptr<Pipeline> instanced_wire_pipeline_;
     std::unique_ptr<InstanceBuffer> instance_buffer_;
+    std::unique_ptr<InstanceBuffer> shadow_instance_buffer_;
+
+    // skinned animation
+    std::unique_ptr<Pipeline> skinned_fill_pipeline_;
+    std::unique_ptr<BoneBuffer> bone_buffer_;
 
     // lighting + shadows + post-process
     std::unique_ptr<LightingPass> lighting_;

@@ -41,6 +41,8 @@ add_library(engine STATIC
     src/animation/animation_player.cpp
     src/animation/bone_buffer.cpp
     src/animation/gltf_loader.cpp
+    src/audio/miniaudio_impl.cpp
+    src/audio/audio.cpp
     src/physics/physics_world.cpp
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp

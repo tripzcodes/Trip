@@ -17,6 +17,7 @@
 #include <engine/world/terrain.h>
 #include <engine/scene/serializer.h>
 #include <engine/animation/gltf_loader.h>
+#include <engine/audio/audio.h>
 #include <engine/renderer/text.h>
 
 #include <chrono>
@@ -127,6 +128,10 @@ int main() {
         auto building_tall    = load_model(assets_dir + "/models/building_tall.obj");
         auto wall_model       = load_model(assets_dir + "/models/wall.obj");
 
+        // audio
+        engine::Audio audio;
+        uint32_t sfx_ping = audio.load(assets_dir + "/audio/ping.wav");
+
         // physics
         engine::PhysicsWorld physics;
 
@@ -218,6 +223,16 @@ int main() {
 
             camera.move_speed = gui.state().camera_speed;
             camera.update(input, dt);
+
+            // update audio listener to camera position
+            audio.set_listener(camera.position(), camera.front(), glm::vec3(0, 1, 0));
+
+            // F key plays test sound
+            if (input.key_held(GLFW_KEY_F)) {
+                if (!audio.is_playing(sfx_ping)) {
+                    audio.play(sfx_ping);
+                }
+            }
 
             // tick animations
             auto anim_view = scene.view<engine::AnimationComponent>();

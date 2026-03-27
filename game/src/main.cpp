@@ -16,6 +16,7 @@
 #include <engine/world/chunk.h>
 #include <engine/world/terrain.h>
 #include <engine/scene/serializer.h>
+#include <engine/animation/gltf_loader.h>
 #include <engine/renderer/text.h>
 
 #include <chrono>
@@ -72,6 +73,28 @@ int main() {
         terrain_rb.shape = engine::RigidBodyComponent::Shape::Box;
         terrain_rb.half_extents = {200.0f, 10.0f, 200.0f};
         scene.add<engine::RigidBodyComponent>(terrain_ent, terrain_rb);
+
+        // animated character
+        {
+            auto gltf = engine::GltfLoader::load(allocator, assets_dir + "/models/rigged_simple.glb");
+            if (gltf.skinned_mesh) {
+                auto char_ent = scene.create("Character");
+                scene.get<engine::TransformComponent>(char_ent).position = {5, 12, -10};
+                scene.get<engine::TransformComponent>(char_ent).scale = glm::vec3(0.5f);
+                scene.add<engine::SkinnedMeshComponent>(char_ent, engine::SkinnedMeshComponent{
+                    gltf.skinned_mesh,
+                    std::make_shared<engine::Skeleton>(gltf.skeleton)
+                });
+                auto& anim = scene.add<engine::AnimationComponent>(char_ent);
+                anim.player.set_skeleton(&scene.get<engine::SkinnedMeshComponent>(char_ent).skeleton.get()[0]);
+                for (auto& clip : gltf.animations) {
+                    anim.clips.push_back(std::make_shared<engine::AnimationClip>(clip));
+                }
+                if (!anim.clips.empty()) {
+                    anim.player.play(anim.clips[0].get());
+                }
+            }
+        }
 
         // helper to load a textured model
         struct LoadedModel {
@@ -195,6 +218,12 @@ int main() {
 
             camera.move_speed = gui.state().camera_speed;
             camera.update(input, dt);
+
+            // tick animations
+            auto anim_view = scene.view<engine::AnimationComponent>();
+            for (auto e : anim_view) {
+                scene.get<engine::AnimationComponent>(e).player.update(dt);
+            }
 
             // stream chunks based on camera position
             chunks.update(camera.position());

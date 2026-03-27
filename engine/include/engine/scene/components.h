@@ -1,6 +1,10 @@
 #pragma once
 
 #include <engine/renderer/mesh.h>
+#include <engine/renderer/skinned_mesh.h>
+#include <engine/animation/skeleton.h>
+#include <engine/animation/animation_clip.h>
+#include <engine/animation/animation_player.h>
 #include <entt/entt.hpp>
 
 #include <glm/glm.hpp>
@@ -106,6 +110,17 @@ struct DirectionalLightComponent {
             cos(pitch) * cos(yaw)
         ));
     }
+};
+
+struct SkinnedMeshComponent {
+    std::shared_ptr<SkinnedMesh> mesh;
+    std::shared_ptr<Skeleton> skeleton;
+};
+
+struct AnimationComponent {
+    std::vector<std::shared_ptr<AnimationClip>> clips;
+    AnimationPlayer player;
+    uint32_t active_clip = 0;
 };
 
 } // namespace engine

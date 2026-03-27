@@ -14,7 +14,10 @@ void AnimationPlayer::play(const AnimationClip* clip, bool loop) {
     current_time_ = 0.0f;
     playing_ = true;
     if (skeleton_) {
-        final_matrices_.resize(skeleton_->bone_count(), glm::mat4(1.0f));
+        uint32_t n = skeleton_->bone_count();
+        final_matrices_.resize(n, glm::mat4(1.0f));
+        local_transforms_.resize(n);
+        world_transforms_.resize(n);
     }
 }
 
@@ -25,10 +28,17 @@ void AnimationPlayer::stop() {
 
 template <typename Key>
 static uint32_t find_key(const std::vector<Key>& keys, float time) {
-    for (uint32_t i = 0; i + 1 < keys.size(); i++) {
-        if (time < keys[i + 1].time) return i;
+    if (keys.size() <= 2) {
+        return 0;
     }
-    return keys.empty() ? 0 : static_cast<uint32_t>(keys.size() - 2);
+    // binary search for the interval containing time
+    uint32_t lo = 0, hi = static_cast<uint32_t>(keys.size() - 2);
+    while (lo < hi) {
+        uint32_t mid = (lo + hi + 1) / 2;
+        if (keys[mid].time <= time) lo = mid;
+        else hi = mid - 1;
+    }
+    return lo;
 }
 
 glm::vec3 AnimationPlayer::sample_position(const BoneChannel& ch, float time) const {
@@ -72,12 +82,10 @@ void AnimationPlayer::update(float dt) {
     }
 
     uint32_t bone_count = skeleton_->bone_count();
-    final_matrices_.resize(bone_count);
 
-    // build per-bone local transforms from animation channels
-    std::vector<glm::mat4> local_transforms(bone_count);
+    // reuse pre-allocated buffers
     for (uint32_t i = 0; i < bone_count; i++) {
-        local_transforms[i] = skeleton_->bones[i].local_bind_transform;
+        local_transforms_[i] = skeleton_->bones[i].local_bind_transform;
     }
 
     for (const auto& ch : clip_->channels) {
@@ -93,19 +101,18 @@ void AnimationPlayer::update(float dt) {
         glm::mat4 t = glm::translate(glm::mat4(1.0f), pos);
         glm::mat4 r = glm::toMat4(rot);
         glm::mat4 s = glm::scale(glm::mat4(1.0f), scl);
-        local_transforms[ch.bone_index] = t * r * s;
+        local_transforms_[ch.bone_index] = t * r * s;
     }
 
     // compute world transforms (parent-first traversal)
-    std::vector<glm::mat4> world_transforms(bone_count);
     for (uint32_t i = 0; i < bone_count; i++) {
         int32_t parent = skeleton_->bones[i].parent_index;
         if (parent >= 0) {
-            world_transforms[i] = world_transforms[parent] * local_transforms[i];
+            world_transforms_[i] = world_transforms_[parent] * local_transforms_[i];
         } else {
-            world_transforms[i] = local_transforms[i];
+            world_transforms_[i] = local_transforms_[i];
         }
-        final_matrices_[i] = world_transforms[i] * skeleton_->bones[i].inverse_bind_matrix;
+        final_matrices_[i] = world_transforms_[i] * skeleton_->bones[i].inverse_bind_matrix;
     }
 }
 

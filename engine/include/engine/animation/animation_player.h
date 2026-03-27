@@ -31,6 +31,8 @@ private:
     bool playing_ = false;
     bool loop_ = true;
     std::vector<glm::mat4> final_matrices_;
+    std::vector<glm::mat4> local_transforms_;
+    std::vector<glm::mat4> world_transforms_;
 };
 
 } // namespace engine

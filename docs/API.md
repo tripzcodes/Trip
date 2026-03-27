@@ -467,6 +467,35 @@ Loads chunks in a square around the camera. Hysteresis unloading at `radius + 1`
 
 ---
 
+## Audio
+
+### Audio
+
+```cpp
+class Audio {
+    Audio();
+
+    uint32_t load(const std::string& path);       // WAV, MP3, FLAC, OGG
+    void play(uint32_t handle, bool loop = false);
+    void stop(uint32_t handle);
+    void set_volume(uint32_t handle, float volume);
+    void set_pan(uint32_t handle, float pan);      // -1 left, 0 center, 1 right
+    bool is_playing(uint32_t handle) const;
+
+    // 3D spatial audio
+    void set_listener(const glm::vec3& position, const glm::vec3& forward, const glm::vec3& up);
+    void set_position(uint32_t handle, const glm::vec3& position);
+    void set_attenuation(uint32_t handle, float min_dist, float max_dist);
+
+    void set_master_volume(float volume);
+    void stop_all();
+};
+```
+
+`load()` returns a handle. Supports 3D spatialization with linear distance attenuation. Listener should sync to camera position each frame.
+
+---
+
 ## Physics
 
 ### PhysicsWorld

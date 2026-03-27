@@ -51,29 +51,33 @@ float compute_ssao() {
     return clamp(ao, 0.0, 1.0);
 }
 
-// ====== BLOOM ======
+// ====== BLOOM (separable 5+5 = 10 taps instead of 25) ======
 vec3 compute_bloom(vec3 color) {
     if (params.bloom_params.x < 0.5) { return vec3(0.0); }
 
     float threshold = params.bloom_params.y;
     float bloom_intensity = params.bloom_params.z;
 
-    // simple blur of bright areas
     vec2 texel = 1.0 / textureSize(hdr_input, 0);
-    vec3 bloom = vec3(0.0);
+    const float w[5] = float[](0.0625, 0.25, 0.375, 0.25, 0.0625);
 
+    // horizontal 5-tap
+    vec3 h_bloom = vec3(0.0);
     for (int x = -2; x <= 2; x++) {
-        for (int y = -2; y <= 2; y++) {
-            vec3 s = texture(hdr_input, frag_uv + vec2(x, y) * texel * 3.0).rgb;
-            float brightness = dot(s, vec3(0.2126, 0.7152, 0.0722));
-            if (brightness > threshold) {
-                bloom += s;
-            }
-        }
+        vec3 s = texture(hdr_input, frag_uv + vec2(x, 0) * texel * 3.0).rgb;
+        float b = dot(s, vec3(0.2126, 0.7152, 0.0722));
+        h_bloom += (b > threshold ? s : vec3(0.0)) * w[x + 2];
     }
-    bloom /= 25.0;
 
-    return bloom * bloom_intensity;
+    // vertical 5-tap
+    vec3 v_bloom = vec3(0.0);
+    for (int y = -2; y <= 2; y++) {
+        vec3 s = texture(hdr_input, frag_uv + vec2(0, y) * texel * 3.0).rgb;
+        float b = dot(s, vec3(0.2126, 0.7152, 0.0722));
+        v_bloom += (b > threshold ? s : vec3(0.0)) * w[y + 2];
+    }
+
+    return (h_bloom + v_bloom) * 0.5 * bloom_intensity;
 }
 
 // ====== TONE MAPPING ======

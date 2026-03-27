@@ -64,6 +64,8 @@ private:
 
     std::unordered_map<ChunkCoord, Chunk, ChunkCoordHash> chunks_;
     ChunkCoord last_center_{INT_MAX, INT_MAX};
+    std::vector<ChunkCoord> pending_loads_;
+    uint32_t max_loads_per_frame_ = 2;
 };
 
 } // namespace engine

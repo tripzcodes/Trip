@@ -21,38 +21,43 @@ ChunkCoord ChunkManager::world_to_chunk(const glm::vec3& pos) const {
 void ChunkManager::update(const glm::vec3& camera_pos) {
     ChunkCoord center = world_to_chunk(camera_pos);
 
-    // skip if camera hasn't moved to a new chunk
-    if (center == last_center_) { return; }
-    last_center_ = center;
+    // rebuild pending list when camera crosses a chunk boundary
+    if (!(center == last_center_)) {
+        last_center_ = center;
 
-    int r = static_cast<int>(view_radius_);
-    int unload_r = r + 1; // hysteresis: keep chunks 1 ring beyond load radius
+        int r = static_cast<int>(view_radius_);
+        int unload_r = r + 1;
 
-    // determine which chunks should be loaded
-    std::unordered_map<ChunkCoord, bool, ChunkCoordHash> desired;
-    for (int z = center.z - r; z <= center.z + r; z++) {
-        for (int x = center.x - r; x <= center.x + r; x++) {
-            desired[{x, z}] = true;
+        // unload chunks beyond the larger unload radius
+        std::vector<ChunkCoord> to_unload;
+        for (auto& [coord, chunk] : chunks_) {
+            if (std::abs(coord.x - center.x) > unload_r ||
+                std::abs(coord.z - center.z) > unload_r) {
+                to_unload.push_back(coord);
+            }
+        }
+        for (const auto& coord : to_unload) {
+            unload_chunk(coord);
+        }
+
+        // queue new chunks for loading
+        pending_loads_.clear();
+        for (int z = center.z - r; z <= center.z + r; z++) {
+            for (int x = center.x - r; x <= center.x + r; x++) {
+                ChunkCoord coord{x, z};
+                if (chunks_.find(coord) == chunks_.end()) {
+                    pending_loads_.push_back(coord);
+                }
+            }
         }
     }
 
-    // unload chunks beyond the larger unload radius
-    std::vector<ChunkCoord> to_unload;
-    for (auto& [coord, chunk] : chunks_) {
-        if (std::abs(coord.x - center.x) > unload_r ||
-            std::abs(coord.z - center.z) > unload_r) {
-            to_unload.push_back(coord);
-        }
-    }
-    for (const auto& coord : to_unload) {
-        unload_chunk(coord);
-    }
-
-    // load new chunks
-    for (auto& [coord, _] : desired) {
-        if (chunks_.find(coord) == chunks_.end()) {
-            load_chunk(coord);
-        }
+    // load up to max_loads_per_frame_ chunks this frame to avoid hitching
+    uint32_t loaded = 0;
+    while (!pending_loads_.empty() && loaded < max_loads_per_frame_) {
+        load_chunk(pending_loads_.back());
+        pending_loads_.pop_back();
+        loaded++;
     }
 }
 
@@ -72,7 +77,6 @@ void ChunkManager::unload_chunk(const ChunkCoord& coord) {
     auto it = chunks_.find(coord);
     if (it == chunks_.end()) { return; }
 
-    // destroy all entities in the chunk
     for (auto entity : it->second.entities) {
         if (scene_.registry().valid(entity)) {
             scene_.destroy(entity);

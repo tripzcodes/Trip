@@ -36,6 +36,11 @@ add_library(engine STATIC
     src/scene/scene.cpp
     src/world/chunk.cpp
     src/world/terrain.cpp
+    src/renderer/skinned_mesh.cpp
+    src/animation/cgltf_impl.cpp
+    src/animation/animation_player.cpp
+    src/animation/bone_buffer.cpp
+    src/animation/gltf_loader.cpp
     src/physics/physics_world.cpp
     ${IMGUI_DIR}/imgui.cpp
     ${IMGUI_DIR}/imgui_demo.cpp

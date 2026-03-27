@@ -37,5 +37,7 @@ compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/taa_resolve.comp)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/gpu_cull.comp)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/text.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/text.frag)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/gbuffer_skinned.vert)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/shadow_skinned.vert)
 
 add_custom_target(shaders ALL DEPENDS ${SPV_FILES})

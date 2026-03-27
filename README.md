@@ -4,7 +4,7 @@
 
 **Custom Vulkan game engine built from scratch in C++**
 
-Deferred renderer · PBR · Normal mapping · TAA · GPU culling · PCSS shadows · Terrain · Text rendering · Physics
+Deferred renderer · PBR · Normal mapping · TAA · GPU culling · PCSS shadows · Skeletal animation · Terrain · Text · Physics
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.x-AC162C?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -25,6 +25,7 @@ No middleware. No abstraction layers. Raw Vulkan, written from the ground up —
 engine/
 ├── core/         window, input, fps camera
 ├── renderer/     vulkan context, swapchain, full deferred pipeline
+├── animation/    skeleton, keyframes, glTF loader, bone buffer
 ├── scene/        entt ecs, components, lod, serialization
 ├── world/        chunk streaming, procedural terrain
 └── physics/      jolt physics integration
@@ -70,6 +71,8 @@ shaders/          glsl → spir-v
 
 `Jolt Physics` · static/dynamic rigid bodies synced to ECS
 
+`Skeletal animation` · glTF skinned mesh loading, GPU skinning via bone SSBO, keyframe interpolation with slerp
+
 `Procedural terrain` · fractal noise heightmap, height-based coloring, bilinear height queries
 
 `Scene serialization` · JSON save/load of entities, camera, and engine settings
@@ -85,7 +88,7 @@ shaders/          glsl → spir-v
 <tr><td><img src="https://img.shields.io/badge/-AC162C?style=flat-square&logo=vulkan&logoColor=white" alt=""/></td><td>Vulkan 1.x (MoltenVK on macOS)</td></tr>
 <tr><td><img src="https://img.shields.io/badge/-333?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyTDIgN2wxMCA1IDEwLTV6TTIgMTdsMTAgNSAxMC01TTIgMTJsMTAgNSAxMC01Ii8+PC9zdmc+" alt=""/></td><td>EnTT (ECS)</td></tr>
 <tr><td><img src="https://img.shields.io/badge/-4A154B?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xMiAyYTEwIDEwIDAgMTAgMCAyMCAxMCAxMCAwIDAwMC0yMHptMCA0YTIgMiAwIDExMCA0IDIgMiAwIDAxMC00em0wIDE0Yy0yLjY3IDAtOC0xLjM0LTgtNHYtMmMwLTIuNjYgNS4zMy00IDgtNHM4IDEuMzQgOCA0djJjMCAyLjY2LTUuMzMgNC04IDR6Ii8+PC9zdmc+" alt=""/></td><td>Jolt Physics</td></tr>
-<tr><td><img src="https://img.shields.io/badge/-333?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoMTh2MThIM3ptMiAydjE0aDE0VjV6Ii8+PC9zdmc+" alt=""/></td><td>GLFW · Dear ImGui · VMA · tinyobjloader · stb_image · stb_truetype · nlohmann/json</td></tr>
+<tr><td><img src="https://img.shields.io/badge/-333?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0zIDNoMTh2MThIM3ptMiAydjE0aDE0VjV6Ii8+PC9zdmc+" alt=""/></td><td>GLFW · Dear ImGui · VMA · tinyobjloader · cgltf · stb_image · stb_truetype · nlohmann/json</td></tr>
 </table>
 
 ## Documentation

@@ -96,6 +96,7 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
     ImGui::Checkbox("Occlusion Culling", &state_.occlusion_culling);
     ImGui::Checkbox("TAA", &state_.taa_enabled);
     ImGui::Checkbox("GPU Culling", &state_.gpu_culling);
+    ImGui::Checkbox("SSR", &state_.ssr_enabled);
     if (state_.taa_enabled) {
         ImGui::SliderFloat("TAA Sharpness", &state_.taa_sharpness, 0.0f, 1.0f);
     }

@@ -614,8 +614,10 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
         shadow_map_->cascade(1).split_depth,
         shadow_map_->cascade(2).split_depth,
         0.0f);
-    ld.debug_flags = glm::vec4(show_cascade_debug ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f);
+    ld.debug_flags = glm::vec4(show_cascade_debug ? 1.0f : 0.0f, ssr_enabled ? 1.0f : 0.0f, 0.0f, 0.0f);
     ld.camera_forward = glm::vec4(camera.front(), 0.0f);
+    ld.view_proj = proj_unjittered * view;
+    ld.inv_view_proj = glm::inverse(ld.view_proj);
     lighting_->update(current_frame_, ld);
 
     // common state
@@ -907,6 +909,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
 
     prev_view_proj_ = proj_unjittered * view; // unjittered for occlusion culling
     prev_view_proj_unjittered_ = prev_view_proj_;
+    camera_pos_cache_ = cam_pos;
 }
 
 void Renderer::lighting_pass(VkCommandBuffer cmd, const Camera& /*camera*/) {
@@ -949,18 +952,22 @@ void Renderer::post_process_pass(VkCommandBuffer cmd) {
     vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, post_process_->pipeline_layout(),
                             0, 1, &ds, 0, nullptr);
 
-    // push post-process settings
+    // push post-process settings + SSR matrices
     struct PushData {
         glm::vec4 ssao_params;
         glm::vec4 bloom_params;
-        glm::vec4 tonemap_params;
+        glm::vec4 tonemap_params;   // x=mode, y=exposure, z=ssr_enabled
+        glm::mat4 view_proj;
+        glm::vec4 camera_pos;
     } push{};
     push.ssao_params = glm::vec4(post_settings.ssao_enabled ? 1.0f : 0.0f,
                                   post_settings.ssao_radius, post_settings.ssao_intensity, 0.0f);
     push.bloom_params = glm::vec4(post_settings.bloom_enabled ? 1.0f : 0.0f,
                                    post_settings.bloom_threshold, post_settings.bloom_intensity, 0.0f);
     push.tonemap_params = glm::vec4(static_cast<float>(post_settings.tone_map_mode),
-                                     post_settings.exposure, 0.0f, 0.0f);
+                                     post_settings.exposure, ssr_enabled ? 1.0f : 0.0f, 0.0f);
+    push.view_proj = prev_view_proj_unjittered_;
+    push.camera_pos = glm::vec4(camera_pos_cache_, 1.0f);
 
     vkCmdPushConstants(cmd, post_process_->pipeline_layout(), VK_SHADER_STAGE_FRAGMENT_BIT,
                        0, sizeof(PushData), &push);

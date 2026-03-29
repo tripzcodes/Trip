@@ -56,6 +56,7 @@ public:
     bool occlusion_culling = false;
     bool taa_enabled = false;
     bool gpu_culling = false;
+    bool ssr_enabled = false;
     float taa_sharpness = 0.0f;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
@@ -125,6 +126,7 @@ private:
     uint32_t image_index_ = 0;
 
     glm::mat4 prev_view_proj_{1.0f};
+    glm::vec3 camera_pos_cache_{0.0f};
     glm::mat4 prev_view_proj_unjittered_{1.0f};
     uint32_t jitter_index_ = 0;
     glm::vec2 current_jitter_{0.0f};

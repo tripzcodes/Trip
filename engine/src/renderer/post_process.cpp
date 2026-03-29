@@ -103,9 +103,9 @@ void PostProcess::create_framebuffers() {
 void PostProcess::create_descriptors() {
     auto device = context_.device();
 
-    // bindings: 0=HDR input, 1=G-Buffer depth, 2=G-Buffer normal
-    std::array<VkDescriptorSetLayoutBinding, 3> bindings{};
-    for (uint32_t i = 0; i < 3; i++) {
+    // bindings: 0=HDR input, 1=depth, 2=normal, 3=position, 4=albedo
+    std::array<VkDescriptorSetLayoutBinding, 5> bindings{};
+    for (uint32_t i = 0; i < 5; i++) {
         bindings[i].binding = i;
         bindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         bindings[i].descriptorCount = 1;
@@ -121,7 +121,7 @@ void PostProcess::create_descriptors() {
         throw std::runtime_error("Failed to create post-process descriptor layout");
     }
 
-    VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 3 * MAX_FRAMES };
+    VkDescriptorPoolSize pool_size = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 5 * MAX_FRAMES };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -155,8 +155,18 @@ void PostProcess::create_descriptors() {
     normal_info.imageView = gbuffer_.normal_view();
     normal_info.sampler = gbuffer_.sampler();
 
+    VkDescriptorImageInfo position_info{};
+    position_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    position_info.imageView = gbuffer_.position_view();
+    position_info.sampler = gbuffer_.sampler();
+
+    VkDescriptorImageInfo albedo_info{};
+    albedo_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    albedo_info.imageView = gbuffer_.albedo_view();
+    albedo_info.sampler = gbuffer_.sampler();
+
     for (uint32_t f = 0; f < MAX_FRAMES; f++) {
-        std::array<VkWriteDescriptorSet, 2> writes{};
+        std::array<VkWriteDescriptorSet, 4> writes{};
         writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writes[0].dstSet = descriptor_sets_[f];
         writes[0].dstBinding = 1;
@@ -170,6 +180,20 @@ void PostProcess::create_descriptors() {
         writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
         writes[1].descriptorCount = 1;
         writes[1].pImageInfo = &normal_info;
+
+        writes[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[2].dstSet = descriptor_sets_[f];
+        writes[2].dstBinding = 3;
+        writes[2].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[2].descriptorCount = 1;
+        writes[2].pImageInfo = &position_info;
+
+        writes[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[3].dstSet = descriptor_sets_[f];
+        writes[3].dstBinding = 4;
+        writes[3].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[3].descriptorCount = 1;
+        writes[3].pImageInfo = &albedo_info;
 
         vkUpdateDescriptorSets(device, static_cast<uint32_t>(writes.size()), writes.data(), 0, nullptr);
     }

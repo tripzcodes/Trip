@@ -68,11 +68,13 @@ private:
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
 
-    // push constant for settings
+    // push constant for settings + SSR
     struct PushData {
         glm::vec4 ssao_params;    // x=enabled, y=radius, z=intensity
         glm::vec4 bloom_params;   // x=enabled, y=threshold, z=intensity
-        glm::vec4 tonemap_params; // x=mode, y=exposure
+        glm::vec4 tonemap_params; // x=mode, y=exposure, z=ssr_enabled
+        glm::mat4 view_proj;     // for SSR ray marching
+        glm::vec4 camera_pos;    // xyz = camera position
     };
 };
 

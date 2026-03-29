@@ -19,8 +19,10 @@ struct LightData {
     glm::vec4 clear_color;
     glm::mat4 cascade_vp[3];
     glm::vec4 cascade_splits; // x, y, z = split depths
-    glm::vec4 debug_flags;    // x = show_cascade_debug
+    glm::vec4 debug_flags;    // x = show_cascade_debug, y = ssr_enabled
     glm::vec4 camera_forward; // xyz = camera forward direction
+    glm::mat4 view_proj;
+    glm::mat4 inv_view_proj;
 };
 
 class LightingPass {

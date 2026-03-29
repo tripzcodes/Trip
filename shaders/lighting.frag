@@ -11,8 +11,10 @@ layout(binding = 0) uniform LightData {
     vec4 clear_color;
     mat4 cascade_vp[CASCADE_COUNT];
     vec4 cascade_splits;
-    vec4 debug_flags;    // x = show_cascade_debug
+    vec4 debug_flags;    // x = show_cascade_debug, y = ssr_enabled
     vec4 camera_forward; // xyz = camera forward direction
+    mat4 view_proj;
+    mat4 inv_view_proj;
 } light;
 
 layout(binding = 1) uniform sampler2D gbuf_albedo;
@@ -179,8 +181,6 @@ void main() {
     vec3 ambient = light.ambient_color.rgb * light.ambient_color.a * albedo;
 
     vec3 color = ambient + Lo;
-
-    // output raw HDR — tone mapping handled in post-process
 
     // cascade debug visualization
     if (light.debug_flags.x > 0.5) {

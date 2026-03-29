@@ -4,7 +4,7 @@
 
 **Custom Vulkan game engine built from scratch in C++**
 
-Deferred renderer · PBR · Normal mapping · TAA · GPU culling · PCSS shadows · Skeletal animation · Terrain · Audio · Text · Physics
+Deferred renderer · PBR · Normal mapping · TAA · SSR · GPU culling · PCSS shadows · Skeletal animation · Terrain · Audio · Text · Physics
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.x-AC162C?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -44,7 +44,7 @@ shaders/          glsl → spir-v
 <tr><td><code>Geometry</code></td><td>Frustum culling, Hi-Z occlusion culling, LOD selection, instanced batching, normal mapping via TBN</td></tr>
 <tr><td><code>Lighting</code></td><td>PBR Cook-Torrance BRDF, PCSS soft shadows with variable penumbra</td></tr>
 <tr><td><code>TAA</code></td><td>Temporal anti-aliasing — Halton jitter, depth reprojection, YCoCg neighborhood clamping, CAS sharpening</td></tr>
-<tr><td><code>Post</code></td><td>SSAO, bloom, tone mapping (Reinhard / ACES), exposure control</td></tr>
+<tr><td><code>Post</code></td><td>SSR, SSAO, bloom, tone mapping (Reinhard / ACES), exposure control</td></tr>
 <tr><td><code>Text</code></td><td>Bitmap font rendering via stb_truetype atlas, alpha-blended screen-space quads</td></tr>
 </table>
 
@@ -71,6 +71,8 @@ shaders/          glsl → spir-v
 `LOD system` · distance-based mesh selection with cull distances
 
 `Jolt Physics` · static/dynamic rigid bodies synced to ECS
+
+`Screen-space reflections` · true SSR ray-marching the lit HDR scene, Fresnel-weighted, roughness/edge fading
 
 `Skeletal animation` · glTF skinned mesh loading, GPU skinning via bone SSBO, keyframe interpolation with slerp
 

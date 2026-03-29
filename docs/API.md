@@ -94,6 +94,7 @@ class Renderer {
     bool taa_enabled = false;
     float taa_sharpness = 0.0f;
     bool gpu_culling = false;
+    bool ssr_enabled = false;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float shadow_radius = 150.0f;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
@@ -314,6 +315,8 @@ struct PostProcessSettings {
     float exposure = 1.0f;
 };
 ```
+
+Includes true SSR (screen-space reflections) — ray-marches the depth buffer and samples the lit HDR scene for reflected colors. Controlled by `Renderer::ssr_enabled`. Strongest on metallic, low-roughness surfaces. Uses Fresnel weighting with edge and distance fading.
 
 ### TextRenderer
 

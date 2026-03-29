@@ -75,6 +75,27 @@ int main() {
         terrain_rb.half_extents = {200.0f, 10.0f, 200.0f};
         scene.add<engine::RigidBodyComponent>(terrain_ent, terrain_rb);
 
+        // reflective metal platform (SSR test)
+        {
+            float ps = 15.0f;
+            glm::vec3 pn{0, 1, 0};
+            glm::vec3 pc{0.7f, 0.7f, 0.75f};
+            glm::vec4 pt{1, 0, 0, 1};
+            auto platform_mesh = std::make_shared<engine::Mesh>(allocator,
+                std::vector<engine::Vertex>{
+                    {{-ps, 0, -ps}, pn, pc, {0, 0}, pt}, {{ ps, 0, -ps}, pn, pc, {1, 0}, pt},
+                    {{ ps, 0,  ps}, pn, pc, {1, 1}, pt}, {{-ps, 0,  ps}, pn, pc, {0, 1}, pt},
+                },
+                std::vector<uint32_t>{0, 2, 1, 0, 3, 2});
+            auto platform_ent = scene.create("Mirror Platform");
+            scene.get<engine::TransformComponent>(platform_ent).position = {0, 10, -15};
+            scene.add<engine::MeshComponent>(platform_ent, engine::MeshComponent{platform_mesh});
+            auto& pmat = scene.add<engine::MaterialComponent>(platform_ent);
+            pmat.metallic = 1.0f;
+            pmat.roughness = 0.05f;
+            pmat.albedo = {0.9f, 0.9f, 0.95f};
+        }
+
         // animated character
         {
             auto gltf = engine::GltfLoader::load(allocator, assets_dir + "/models/rigged_simple.glb");
@@ -259,6 +280,7 @@ int main() {
             renderer.taa_enabled = gui.state().taa_enabled;
             renderer.taa_sharpness = gui.state().taa_sharpness;
             renderer.gpu_culling = gui.state().gpu_culling;
+            renderer.ssr_enabled = gui.state().ssr_enabled;
             renderer.show_cascade_debug = gui.state().show_cascade_debug;
             renderer.shadow_mode = static_cast<engine::ShadowMode>(gui.state().shadow_mode);
             std::copy(gui.state().clear_color, gui.state().clear_color + 3, renderer.clear_color);

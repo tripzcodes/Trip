@@ -281,6 +281,8 @@ int main() {
             renderer.taa_sharpness = gui.state().taa_sharpness;
             renderer.gpu_culling = gui.state().gpu_culling;
             renderer.ssr_enabled = gui.state().ssr_enabled;
+            renderer.volumetric_enabled = gui.state().volumetric_enabled;
+            renderer.volumetric_density = gui.state().volumetric_density;
             renderer.show_cascade_debug = gui.state().show_cascade_debug;
             renderer.shadow_mode = static_cast<engine::ShadowMode>(gui.state().shadow_mode);
             std::copy(gui.state().clear_color, gui.state().clear_color + 3, renderer.clear_color);

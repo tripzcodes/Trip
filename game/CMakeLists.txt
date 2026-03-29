@@ -24,4 +24,13 @@ target_compile_definitions(teapot PRIVATE
     ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets"
 )
 
+# volumetric room demo
+add_executable(room src/room.cpp)
+target_link_libraries(room PRIVATE engine)
+add_dependencies(room shaders)
+target_compile_definitions(room PRIVATE
+    SHADER_DIR="${CMAKE_BINARY_DIR}/shaders"
+    ASSETS_DIR="${CMAKE_SOURCE_DIR}/assets"
+)
+
 # deferred.cpp is a milestone 2 snapshot — excluded from build

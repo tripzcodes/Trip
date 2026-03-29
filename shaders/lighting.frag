@@ -140,6 +140,67 @@ float shadow_calc(vec3 world_pos) {
     return pcf_filter(shadow_coord.xy, receiver, filter_radius, bias, cascade);
 }
 
+// ====== VOLUMETRIC LIGHTING ======
+vec3 compute_volumetrics(vec3 world_pos) {
+    // debug_flags: z = volumetric_enabled, w = density
+    if (light.debug_flags.z < 0.5) return vec3(0.0);
+
+    float density = max(light.debug_flags.w, 0.01);
+    vec3 cam = light.camera_pos.xyz;
+    vec3 ray = world_pos - cam;
+    float ray_length = length(ray);
+    vec3 ray_dir = ray / max(ray_length, 0.001);
+
+    // clamp max distance to avoid marching forever on sky pixels
+    ray_length = min(ray_length, 100.0);
+
+    const int STEPS = 24;
+    float step_size = ray_length / float(STEPS);
+
+    // Henyey-Greenstein phase function (forward scattering)
+    float cos_angle = dot(ray_dir, normalize(-light.light_dir.xyz));
+    float g = 0.5; // anisotropy — 0 = isotropic, 1 = fully forward
+    float phase = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cos_angle, 1.5));
+
+    vec3 light_color = light.light_color.rgb * light.light_color.a;
+    vec3 accumulated = vec3(0.0);
+
+    // dithered start to reduce banding
+    float dither = fract(sin(dot(frag_uv * 1000.0, vec2(12.9898, 78.233))) * 43758.5453);
+    float t = step_size * dither;
+
+    for (int i = 0; i < STEPS; i++) {
+        vec3 sample_pos = cam + ray_dir * t;
+
+        // test shadow at this point (reuse shadow_calc logic inline)
+        float view_depth = dot(sample_pos - cam, light.camera_forward.xyz);
+
+        int cascade = CASCADE_COUNT - 1;
+        for (int c = 0; c < CASCADE_COUNT; c++) {
+            if (view_depth < light.cascade_splits[c]) {
+                cascade = c;
+                break;
+            }
+        }
+
+        vec4 sc = light.cascade_vp[cascade] * vec4(sample_pos, 1.0);
+        sc /= sc.w;
+        sc.xy = sc.xy * 0.5 + 0.5;
+
+        float in_light = 1.0;
+        if (sc.x >= 0.0 && sc.x <= 1.0 && sc.y >= 0.0 && sc.y <= 1.0 &&
+            sc.z >= 0.0 && sc.z <= 1.0) {
+            float shadow_depth = texture(shadow_map, vec3(sc.xy, float(cascade))).r;
+            in_light = (sc.z - 0.001 > shadow_depth) ? 0.0 : 1.0;
+        }
+
+        accumulated += in_light * density * step_size;
+        t += step_size;
+    }
+
+    return accumulated * light_color * phase;
+}
+
 void main() {
     vec4 albedo_sample = texture(gbuf_albedo, frag_uv);
     vec4 normal_sample = texture(gbuf_normal, frag_uv);
@@ -181,6 +242,9 @@ void main() {
     vec3 ambient = light.ambient_color.rgb * light.ambient_color.a * albedo;
 
     vec3 color = ambient + Lo;
+
+    // volumetric light scattering (god rays + atmospheric fog)
+    color += compute_volumetrics(world_pos);
 
     // cascade debug visualization
     if (light.debug_flags.x > 0.5) {

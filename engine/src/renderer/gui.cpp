@@ -97,6 +97,10 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
     ImGui::Checkbox("TAA", &state_.taa_enabled);
     ImGui::Checkbox("GPU Culling", &state_.gpu_culling);
     ImGui::Checkbox("SSR", &state_.ssr_enabled);
+    ImGui::Checkbox("Volumetrics", &state_.volumetric_enabled);
+    if (state_.volumetric_enabled) {
+        ImGui::SliderFloat("Fog Density", &state_.volumetric_density, 0.001f, 0.1f);
+    }
     if (state_.taa_enabled) {
         ImGui::SliderFloat("TAA Sharpness", &state_.taa_sharpness, 0.0f, 1.0f);
     }

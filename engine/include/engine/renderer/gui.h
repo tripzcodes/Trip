@@ -20,6 +20,8 @@ struct GuiState {
     float taa_sharpness = 0.0f;
     bool gpu_culling = false;
     bool ssr_enabled = false;
+    bool volumetric_enabled = false;
+    float volumetric_density = 0.015f;
     int shadow_mode = 1; // 0=None, 1=Fixed, 2=Cascaded
 
     // post-process

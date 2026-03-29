@@ -57,6 +57,8 @@ public:
     bool taa_enabled = false;
     bool gpu_culling = false;
     bool ssr_enabled = false;
+    bool volumetric_enabled = false;
+    float volumetric_density = 0.015f;
     float taa_sharpness = 0.0f;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};

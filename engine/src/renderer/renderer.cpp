@@ -614,7 +614,11 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
         shadow_map_->cascade(1).split_depth,
         shadow_map_->cascade(2).split_depth,
         0.0f);
-    ld.debug_flags = glm::vec4(show_cascade_debug ? 1.0f : 0.0f, ssr_enabled ? 1.0f : 0.0f, 0.0f, 0.0f);
+    ld.debug_flags = glm::vec4(
+        show_cascade_debug ? 1.0f : 0.0f,
+        ssr_enabled ? 1.0f : 0.0f,
+        volumetric_enabled ? 1.0f : 0.0f,
+        volumetric_density);
     ld.camera_forward = glm::vec4(camera.front(), 0.0f);
     ld.view_proj = proj_unjittered * view;
     ld.inv_view_proj = glm::inverse(ld.view_proj);

@@ -6,6 +6,7 @@ struct GLFWwindow;
 
 namespace engine {
 
+class Audio;
 class VulkanContext;
 class Swapchain;
 class Scene;
@@ -32,6 +33,10 @@ struct GuiState {
     float camera_speed = 3.0f;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
 
+    // audio
+    float master_volume = 1.0f;
+    bool music_playing = true;
+
     // save/load triggers (set to true for one frame when button clicked)
     bool save_scene = false;
     bool load_scene = false;
@@ -46,7 +51,8 @@ public:
     Gui(const Gui&) = delete;
     Gui& operator=(const Gui&) = delete;
 
-    void begin_frame(Scene& scene, uint32_t draw_calls = 0, uint32_t culled_objects = 0,
+    void begin_frame(Scene& scene, Audio* audio = nullptr,
+                     uint32_t draw_calls = 0, uint32_t culled_objects = 0,
                      uint32_t loaded_chunks = 0);
     void render(VkCommandBuffer cmd);
 

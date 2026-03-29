@@ -1,6 +1,7 @@
 #include <engine/renderer/gui.h>
 #include <engine/renderer/vulkan_context.h>
 #include <engine/renderer/swapchain.h>
+#include <engine/audio/audio.h>
 #include <engine/scene/scene.h>
 #include <engine/scene/components.h>
 
@@ -75,7 +76,8 @@ void Gui::create_descriptor_pool() {
     }
 }
 
-void Gui::begin_frame(Scene& scene, uint32_t draw_calls, uint32_t culled_objects,
+void Gui::begin_frame(Scene& scene, Audio* audio,
+                      uint32_t draw_calls, uint32_t culled_objects,
                       uint32_t loaded_chunks) {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -110,6 +112,20 @@ void Gui::begin_frame(Scene& scene, uint32_t draw_calls, uint32_t culled_objects
     state_.save_scene = ImGui::Button("Save Scene");
     ImGui::SameLine();
     state_.load_scene = ImGui::Button("Load Scene");
+
+    if (audio) {
+        ImGui::Separator();
+        ImGui::Text("Audio");
+        if (ImGui::SliderFloat("Master Volume", &state_.master_volume, 0.0f, 1.0f)) {
+            audio->set_master_volume(state_.master_volume);
+        }
+        if (ImGui::Button(state_.music_playing ? "Pause Music" : "Play Music")) {
+            state_.music_playing = !state_.music_playing;
+            // handle 1 = music (by convention from main.cpp)
+            if (state_.music_playing) audio->play(1, true);
+            else audio->stop(1);
+        }
+    }
 
     ImGui::Separator();
     ImGui::Text("Post-Processing");

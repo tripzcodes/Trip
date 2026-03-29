@@ -4,3 +4,4 @@ build/
 *.spv
 compile_commands.json
 scene.json
+assets/audio/*.mp3

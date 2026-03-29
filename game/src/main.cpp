@@ -131,6 +131,11 @@ int main() {
         // audio
         engine::Audio audio;
         uint32_t sfx_ping = audio.load(assets_dir + "/audio/ping.wav");
+        uint32_t music = audio.load(assets_dir + "/audio/bspots.mp3");
+        if (music != UINT32_MAX) {
+            audio.set_volume(music, 1.0f);
+            audio.play(music, true);
+        }
 
         // physics
         engine::PhysicsWorld physics;
@@ -319,7 +324,7 @@ int main() {
                 }
             }
 
-            gui.begin_frame(scene, renderer.draw_calls, renderer.culled_objects,
+            gui.begin_frame(scene, &audio, renderer.draw_calls, renderer.culled_objects,
                             chunks.loaded_chunks());
 
             // queue in-game text

@@ -10,7 +10,7 @@ namespace engine {
 class VulkanContext;
 class Scene;
 
-static constexpr uint32_t SHADOW_MAP_SIZE = 2048;
+static constexpr uint32_t SHADOW_MAP_SIZE = 4096;
 static constexpr uint32_t CASCADE_COUNT = 3;
 
 enum class ShadowMode {
@@ -33,6 +33,7 @@ public:
     VkFramebuffer framebuffer(uint32_t cascade) const { return framebuffers_[cascade]; }
     VkImageView array_view() const { return array_view_; }
     VkSampler sampler() const { return sampler_; }
+    VkSampler comparison_sampler() const { return comparison_sampler_; }
     VkPipeline pipeline() const { return pipeline_; }
     VkPipeline instanced_pipeline() const { return instanced_pipeline_; }
     VkPipelineLayout pipeline_layout() const { return pipeline_layout_; }
@@ -45,7 +46,9 @@ public:
     void compute_fixed(const glm::vec3& light_dir,
                        const glm::vec3& scene_min, const glm::vec3& scene_max);
 
-    void compute_cascaded(const glm::mat4& camera_view, const glm::mat4& camera_proj,
+    void compute_cascaded(const glm::vec3& camera_pos, const glm::vec3& camera_fwd,
+                          const glm::vec3& camera_right, const glm::vec3& camera_up,
+                          float fov, float aspect,
                           const glm::vec3& light_dir, float near, float far,
                           const glm::vec3& scene_min, const glm::vec3& scene_max);
 
@@ -70,6 +73,7 @@ private:
     std::vector<VkFramebuffer> framebuffers_;
     VkRenderPass render_pass_ = VK_NULL_HANDLE;
     VkSampler sampler_ = VK_NULL_HANDLE;
+    VkSampler comparison_sampler_ = VK_NULL_HANDLE;
     VkPipeline pipeline_ = VK_NULL_HANDLE;
     VkPipeline instanced_pipeline_ = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout_ = VK_NULL_HANDLE;

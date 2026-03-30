@@ -180,8 +180,9 @@ void LightingPass::create_framebuffers() {
 void LightingPass::create_descriptors(uint32_t frame_count) {
     auto device = context_.device();
 
-    // layout: UBO at 0, albedo at 1, normal at 2, depth at 3
-    std::array<VkDescriptorSetLayoutBinding, 6> bindings{};
+    // layout: UBO at 0, albedo at 1, normal at 2, depth at 3,
+    //         shadow at 4, position at 5, shadow comparison at 6
+    std::array<VkDescriptorSetLayoutBinding, 7> bindings{};
 
     bindings[0].binding = 0;
     bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -213,6 +214,11 @@ void LightingPass::create_descriptors(uint32_t frame_count) {
     bindings[5].descriptorCount = 1;
     bindings[5].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
+    bindings[6].binding = 6;
+    bindings[6].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+    bindings[6].descriptorCount = 1;
+    bindings[6].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
     VkDescriptorSetLayoutCreateInfo layout_info{};
     layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
@@ -225,7 +231,7 @@ void LightingPass::create_descriptors(uint32_t frame_count) {
     // pool
     std::array<VkDescriptorPoolSize, 2> pool_sizes{};
     pool_sizes[0] = { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, frame_count };
-    pool_sizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, frame_count * 5 };
+    pool_sizes[1] = { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, frame_count * 6 };
 
     VkDescriptorPoolCreateInfo pool_info{};
     pool_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -443,22 +449,36 @@ void LightingPass::update(uint32_t frame, const LightData& data) {
     memcpy(mapped_[frame], &data, sizeof(LightData));
 }
 
-void LightingPass::bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler) {
+void LightingPass::bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler,
+                                   VkSampler shadow_comparison_sampler) {
     for (size_t i = 0; i < sets_.size(); i++) {
         VkDescriptorImageInfo shadow_info{};
         shadow_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
         shadow_info.imageView = shadow_view;
         shadow_info.sampler = shadow_sampler;
 
-        VkWriteDescriptorSet write{};
-        write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        write.dstSet = sets_[i];
-        write.dstBinding = 4;
-        write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        write.descriptorCount = 1;
-        write.pImageInfo = &shadow_info;
+        VkDescriptorImageInfo shadow_cmp_info{};
+        shadow_cmp_info.imageLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
+        shadow_cmp_info.imageView = shadow_view;
+        shadow_cmp_info.sampler = shadow_comparison_sampler;
 
-        vkUpdateDescriptorSets(context_.device(), 1, &write, 0, nullptr);
+        std::array<VkWriteDescriptorSet, 2> writes{};
+        writes[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[0].dstSet = sets_[i];
+        writes[0].dstBinding = 4;
+        writes[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[0].descriptorCount = 1;
+        writes[0].pImageInfo = &shadow_info;
+
+        writes[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        writes[1].dstSet = sets_[i];
+        writes[1].dstBinding = 6;
+        writes[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writes[1].descriptorCount = 1;
+        writes[1].pImageInfo = &shadow_cmp_info;
+
+        vkUpdateDescriptorSets(context_.device(), static_cast<uint32_t>(writes.size()),
+                               writes.data(), 0, nullptr);
     }
 }
 

@@ -22,6 +22,7 @@ layout(binding = 2) uniform sampler2D gbuf_normal;
 layout(binding = 3) uniform sampler2D gbuf_depth;
 layout(binding = 4) uniform sampler2DArray shadow_map;
 layout(binding = 5) uniform sampler2D gbuf_position;
+layout(binding = 6) uniform sampler2DArrayShadow shadow_map_cmp;
 
 layout(location = 0) in vec2 frag_uv;
 layout(location = 0) out vec4 out_color;
@@ -88,32 +89,20 @@ float search_blockers(vec2 uv, float receiver_depth, float search_radius, int ca
 
 float pcf_filter(vec2 uv, float receiver_depth, float filter_radius, float bias, int cascade) {
     float shadow = 0.0;
+    float compare = receiver_depth - bias;
     for (int i = 0; i < PCSS_PCF_SAMPLES; i++) {
         vec2 offset = poisson_disk[i] * filter_radius;
-        float depth = texture(shadow_map, vec3(uv + offset, float(cascade))).r;
-        shadow += (receiver_depth - bias > depth) ? 0.0 : 1.0;
+        // Hardware bilinear comparison: each tap does 2x2 depth test + interpolation
+        shadow += texture(shadow_map_cmp, vec4(uv + offset, float(cascade), compare));
     }
     return shadow / float(PCSS_PCF_SAMPLES);
 }
 
-float shadow_calc(vec3 world_pos) {
-    // select cascade by view-space depth
-    float view_depth = dot(world_pos - light.camera_pos.xyz, light.camera_forward.xyz);
-
-    int cascade = CASCADE_COUNT - 1;
-    for (int i = 0; i < CASCADE_COUNT; i++) {
-        if (view_depth < light.cascade_splits[i]) {
-            cascade = i;
-            break;
-        }
-    }
-
-    // project into light space
+float shadow_for_cascade(vec3 world_pos, int cascade) {
     vec4 shadow_coord = light.cascade_vp[cascade] * vec4(world_pos, 1.0);
     shadow_coord /= shadow_coord.w;
     shadow_coord.xy = shadow_coord.xy * 0.5 + 0.5;
 
-    // outside shadow map
     if (shadow_coord.x < 0.0 || shadow_coord.x > 1.0 ||
         shadow_coord.y < 0.0 || shadow_coord.y > 1.0 ||
         shadow_coord.z < 0.0 || shadow_coord.z > 1.0) {
@@ -124,20 +113,44 @@ float shadow_calc(vec3 world_pos) {
     float bias = 0.001;
     float receiver = shadow_coord.z;
 
-    // PCSS step 1: blocker search
-    float search_radius = PCSS_LIGHT_SIZE * receiver * 8.0;
-    search_radius = max(search_radius, texel_size.x * 2.0);
+    float search_radius = texel_size.x * 24.0;
     float avg_blocker = search_blockers(shadow_coord.xy, receiver - bias, search_radius, cascade);
 
-    // no blockers = fully lit
     if (avg_blocker < 0.0) return 1.0;
 
-    // PCSS step 2: penumbra estimation
     float penumbra = (receiver - avg_blocker) * PCSS_LIGHT_SIZE / avg_blocker;
-    float filter_radius = max(penumbra * 4.0, texel_size.x * 1.5);
+    float filter_radius = max(penumbra * 4.0, texel_size.x * 6.0);
 
-    // PCSS step 3: filtered PCF
     return pcf_filter(shadow_coord.xy, receiver, filter_radius, bias, cascade);
+}
+
+float shadow_calc(vec3 world_pos) {
+    float view_depth = dot(world_pos - light.camera_pos.xyz, light.camera_forward.xyz);
+
+    int cascade = CASCADE_COUNT - 1;
+    for (int i = 0; i < CASCADE_COUNT; i++) {
+        if (view_depth < light.cascade_splits[i]) {
+            cascade = i;
+            break;
+        }
+    }
+
+    float shadow = shadow_for_cascade(world_pos, cascade);
+
+    // FIX 3: cascade blending — smooth transition at cascade boundaries
+    if (cascade < CASCADE_COUNT - 1) {
+        float cascade_end = light.cascade_splits[cascade];
+        float blend_region = cascade_end * 0.1; // blend over 10% of cascade range
+        float dist_to_end = cascade_end - view_depth;
+
+        if (dist_to_end < blend_region) {
+            float t = dist_to_end / blend_region; // 1 at start of blend, 0 at boundary
+            float next_shadow = shadow_for_cascade(world_pos, cascade + 1);
+            shadow = mix(next_shadow, shadow, t);
+        }
+    }
+
+    return shadow;
 }
 
 // ====== VOLUMETRIC LIGHTING ======

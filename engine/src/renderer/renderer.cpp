@@ -184,7 +184,8 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         shader_dir + "/shadow.frag.spv",
         shader_dir + "/shadow_instanced.vert.spv");
 
-    lighting_->bind_shadow_map(shadow_map_->array_view(), shadow_map_->sampler());
+    lighting_->bind_shadow_map(shadow_map_->array_view(), shadow_map_->sampler(),
+                               shadow_map_->comparison_sampler());
 
     post_process_ = std::make_unique<PostProcess>(context, swapchain, *gbuffer_, shader_dir);
     for (uint32_t f = 0; f < MAX_FRAMES_IN_FLIGHT; f++) {
@@ -489,7 +490,7 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
         break;
     }
 
-    // stable shadow bounds centered on camera — avoids jitter from chunk load/unload
+    // stable shadow bounds centered on camera
     glm::vec3 cam = camera.position();
     glm::vec3 stable_min = cam - glm::vec3(shadow_radius);
     glm::vec3 stable_max = cam + glm::vec3(shadow_radius);
@@ -497,9 +498,15 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
     if (shadow_mode == ShadowMode::Fixed) {
         shadow_map_->compute_fixed(light_dir, stable_min, stable_max);
     } else {
+        // SDSM: compute cascades from camera vectors + actual depth range
         shadow_map_->compute_cascaded(
-            camera.view_matrix(), camera.projection_matrix(aspect),
-            light_dir, camera.near_plane, camera.far_plane,
+            camera.position(), camera.front(),
+            glm::normalize(glm::cross(camera.front(), glm::vec3(0, 1, 0))),
+            glm::normalize(glm::cross(
+                glm::normalize(glm::cross(camera.front(), glm::vec3(0, 1, 0))),
+                camera.front())),
+            glm::radians(camera.fov), aspect,
+            light_dir, scene_depth_min_, scene_depth_max_,
             stable_min, stable_max);
     }
 
@@ -720,11 +727,20 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             entities.push_back(ge);
         }
 
-        // CPU-side frustum count for display (mirrors what the GPU does)
+        // CPU-side frustum count + SDSM depth tracking
+        glm::vec3 cam_fwd = camera.front();
+        float depth_min = 1e10f, depth_max = 0.0f;
         for (const auto& ge : entities) {
             if (!frustum.test_aabb(glm::vec3(ge.aabb_min), glm::vec3(ge.aabb_max))) {
                 culled_objects++;
+            } else {
+                float d = glm::dot(glm::vec3(ge.model[3]) - cam_pos, cam_fwd);
+                if (d > 0.0f) { depth_min = std::min(depth_min, d); depth_max = std::max(depth_max, d); }
             }
+        }
+        if (depth_max > depth_min) {
+            scene_depth_min_ = std::max(depth_min, camera.near_plane);
+            scene_depth_max_ = std::min(depth_max * 1.5f, camera.far_plane);
         }
 
         gpu_culling_->upload(entities, groups, frustum, current_frame_);
@@ -807,6 +823,8 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
                                 0, 1, &ds, 0, nullptr);
 
         std::unordered_map<BatchKey, std::vector<InstanceData>, BatchKeyHash> batches;
+        glm::vec3 cam_fwd = camera.front();
+        float depth_min = 1e10f, depth_max = 0.0f;
 
         auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
         for (auto entity : renderable_view) {
@@ -837,6 +855,13 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
                 if (!draw_mesh) { culled_objects++; continue; }
             }
 
+            // SDSM: track visible entity depth range
+            float d = glm::dot(glm::vec3(world[3]) - cam_pos, cam_fwd);
+            if (d > 0.0f) {
+                depth_min = std::min(depth_min, d);
+                depth_max = std::max(depth_max, d);
+            }
+
             InstanceData inst{};
             inst.model = world;
             inst.albedo = glm::vec4(1.0f);
@@ -850,6 +875,12 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             }
 
             batches[{draw_mesh, mat_set}].push_back(inst);
+        }
+
+        // store for next frame's cascade computation
+        if (depth_max > depth_min) {
+            scene_depth_min_ = std::max(depth_min, camera.near_plane);
+            scene_depth_max_ = std::min(depth_max * 1.5f, camera.far_plane); // pad 50%
         }
 
         instance_buffer_->reset();

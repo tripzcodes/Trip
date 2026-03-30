@@ -47,7 +47,8 @@ public:
     VkSampler hdr_sampler() const { return hdr_sampler_; }
 
     void update(uint32_t frame, const LightData& data);
-    void bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler);
+    void bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler,
+                         VkSampler shadow_comparison_sampler);
 
 private:
     void create_render_pass();

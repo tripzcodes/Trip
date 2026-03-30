@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <stdexcept>
 
@@ -41,6 +42,7 @@ ShadowMap::~ShadowMap() {
     if (instanced_pipeline_) { vkDestroyPipeline(device, instanced_pipeline_, nullptr); }
     if (pipeline_) { vkDestroyPipeline(device, pipeline_, nullptr); }
     if (pipeline_layout_) { vkDestroyPipelineLayout(device, pipeline_layout_, nullptr); }
+    if (comparison_sampler_) { vkDestroySampler(device, comparison_sampler_, nullptr); }
     if (sampler_) { vkDestroySampler(device, sampler_, nullptr); }
     for (auto fb : framebuffers_) { vkDestroyFramebuffer(device, fb, nullptr); }
     if (render_pass_) { vkDestroyRenderPass(device, render_pass_, nullptr); }
@@ -193,6 +195,7 @@ void ShadowMap::create_views_and_framebuffers() {
 }
 
 void ShadowMap::create_sampler() {
+    // Nearest sampler for raw depth reads (blocker search, volumetrics)
     VkSamplerCreateInfo info{};
     info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     info.magFilter = VK_FILTER_NEAREST;
@@ -205,6 +208,23 @@ void ShadowMap::create_sampler() {
 
     if (vkCreateSampler(context_.device(), &info, nullptr, &sampler_) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create shadow sampler");
+    }
+
+    // Comparison sampler with bilinear filtering for PCF
+    VkSamplerCreateInfo cmp_info{};
+    cmp_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    cmp_info.magFilter = VK_FILTER_LINEAR;
+    cmp_info.minFilter = VK_FILTER_LINEAR;
+    cmp_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+    cmp_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    cmp_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    cmp_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+    cmp_info.borderColor = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    cmp_info.compareEnable = VK_TRUE;
+    cmp_info.compareOp = VK_COMPARE_OP_LESS;
+
+    if (vkCreateSampler(context_.device(), &cmp_info, nullptr, &comparison_sampler_) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create shadow comparison sampler");
     }
 }
 
@@ -368,9 +388,18 @@ void ShadowMap::compute_fixed(const glm::vec3& light_dir,
     }
 }
 
-void ShadowMap::compute_cascaded(const glm::mat4& camera_view, const glm::mat4& camera_proj,
+void ShadowMap::compute_cascaded(const glm::vec3& camera_pos, const glm::vec3& camera_fwd,
+                                  const glm::vec3& camera_right, const glm::vec3& camera_up,
+                                  float fov, float aspect,
                                   const glm::vec3& light_dir, float near, float far,
                                   const glm::vec3& scene_min, const glm::vec3& scene_max) {
+    static uint32_t s_frame = 0;
+    bool do_log = (s_frame++ % 120 == 0);
+    if (do_log) {
+        fprintf(stderr, "\n=== CASCADE DEBUG ===\n");
+        fprintf(stderr, "near=%.3f far=%.3f\n", near, far);
+    }
+
     glm::vec3 light_d = glm::normalize(light_dir);
 
     glm::vec3 up = glm::vec3(0.0f, 1.0f, 0.0f);
@@ -388,66 +417,75 @@ void ShadowMap::compute_cascaded(const glm::mat4& camera_view, const glm::mat4& 
         splits[i] = lambda * log_split + (1.0f - lambda) * uniform_split;
     }
 
-    // scene diagonal for depth extension
     float scene_radius = glm::length(scene_max - scene_min) * 0.5f;
-    if (scene_radius < 1.0f) { scene_radius = 50.0f; } // fallback
+    if (scene_radius < 1.0f) { scene_radius = 50.0f; }
 
-    glm::mat4 inv_vp = glm::inverse(camera_proj * camera_view);
+    float tan_half_fov = std::tan(fov * 0.5f);
 
     float last_split = near;
     for (uint32_t i = 0; i < CASCADE_COUNT; i++) {
         float split = splits[i];
 
-        // frustum corners in NDC
-        glm::vec3 ndc_corners[8] = {
-            {-1, -1, 0}, { 1, -1, 0}, { 1,  1, 0}, {-1,  1, 0},
-            {-1, -1, 1}, { 1, -1, 1}, { 1,  1, 1}, {-1,  1, 1},
+        // compute frustum slice corners directly from camera vectors
+        // no matrix inverse needed — guaranteed correct
+        float hn = last_split * tan_half_fov; // half height at near of slice
+        float wn = hn * aspect;
+        float hf = split * tan_half_fov;      // half height at far of slice
+        float wf = hf * aspect;
+
+        glm::vec3 nc = camera_pos + camera_fwd * last_split; // near center
+        glm::vec3 fc = camera_pos + camera_fwd * split;       // far center
+
+        glm::vec3 cascade_corners[8] = {
+            nc - camera_up * hn - camera_right * wn,
+            nc - camera_up * hn + camera_right * wn,
+            nc + camera_up * hn + camera_right * wn,
+            nc + camera_up * hn - camera_right * wn,
+            fc - camera_up * hf - camera_right * wf,
+            fc - camera_up * hf + camera_right * wf,
+            fc + camera_up * hf + camera_right * wf,
+            fc + camera_up * hf - camera_right * wf,
         };
 
-        // unproject to world space
-        glm::vec3 world_corners[8];
-        for (uint32_t j = 0; j < 8; j++) {
-            glm::vec4 w = inv_vp * glm::vec4(ndc_corners[j], 1.0f);
-            world_corners[j] = glm::vec3(w) / w.w;
-        }
-
-        // interpolate near/far planes to cascade slice
-        float near_ratio = (last_split - near) / (far - near);
-        float far_ratio = (split - near) / (far - near);
-
-        glm::vec3 cascade_corners[8];
-        for (uint32_t j = 0; j < 4; j++) {
-            glm::vec3 ray = world_corners[j + 4] - world_corners[j];
-            cascade_corners[j] = world_corners[j] + ray * near_ratio;
-            cascade_corners[j + 4] = world_corners[j] + ray * far_ratio;
-        }
-
-        // frustum center
+        // bounding sphere
         glm::vec3 center(0.0f);
-        for (const auto& c : cascade_corners) {
-            center += c;
-        }
+        for (const auto& c : cascade_corners) center += c;
         center /= 8.0f;
 
-        // bounding sphere radius for stable projection
         float radius = 0.0f;
         for (const auto& c : cascade_corners) {
             radius = std::max(radius, glm::length(c - center));
         }
         radius = std::ceil(radius * 16.0f) / 16.0f;
 
-        // light view — extend behind by scene radius to catch off-screen casters
+        // light view
         float z_back = scene_radius * 2.0f;
         glm::mat4 light_view = glm::lookAt(center - light_d * z_back, center, up);
 
+        // texel snapping
+        float world_per_texel = (radius * 2.0f) / static_cast<float>(SHADOW_MAP_SIZE);
+        glm::vec4 origin_ls = light_view * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        origin_ls.x = std::floor(origin_ls.x / world_per_texel) * world_per_texel;
+        origin_ls.y = std::floor(origin_ls.y / world_per_texel) * world_per_texel;
+
+        glm::vec4 unsnapped = light_view * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        float dx = origin_ls.x - unsnapped.x;
+        float dy = origin_ls.y - unsnapped.y;
+
         glm::mat4 light_proj = glm::ortho(-radius, radius, -radius, radius,
             0.0f, z_back * 2.0f);
-
-        // snap projection to texel grid to eliminate sub-texel jitter
-        snap_projection(light_proj, light_view);
+        light_proj[3][0] += dx / radius;
+        light_proj[3][1] += dy / radius;
 
         cascades_[i].view_proj = light_proj * light_view;
         cascades_[i].split_depth = split;
+
+        if (do_log) {
+            float tpu = static_cast<float>(SHADOW_MAP_SIZE) / (radius * 2.0f);
+            fprintf(stderr, "  cascade[%u]: split=%.2f radius=%.2f texels/unit=%.1f "
+                            "center=(%.1f,%.1f,%.1f)\n",
+                    i, split, radius, tpu, center.x, center.y, center.z);
+        }
 
         last_split = split;
     }

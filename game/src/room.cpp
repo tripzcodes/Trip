@@ -48,7 +48,8 @@ int main() {
         engine::Input input(window.handle());
         // camera inside room, facing the window wall (+X)
         engine::Camera camera({-4.0f, 3.0f, 0.0f});
-        camera.set_yaw_pitch(0.0f, -5.0f); // look slightly down toward floor
+        camera.set_yaw_pitch(0.0f, -5.0f);
+        // SDSM auto-fits cascades to visible geometry — no far_plane hack needed
         engine::VulkanContext context(window);
         engine::Swapchain swapchain(context, window);
         engine::Allocator allocator(context);
@@ -177,14 +178,14 @@ int main() {
         // defaults
         gui.state().volumetric_enabled = true;
         gui.state().volumetric_density = 0.03f;
-        gui.state().shadow_mode = 2; // Cascaded
+        gui.state().shadow_mode = 2; // Cascaded — SDSM auto-fits to scene
         gui.state().bloom_enabled = true;
         gui.state().bloom_threshold = 0.6f;
         gui.state().bloom_intensity = 0.4f;
         gui.state().exposure = 1.5f;
         gui.state().ssao_enabled = true;
         gui.state().ssao_intensity = 2.0f;
-        renderer.shadow_radius = 20.0f;
+        renderer.shadow_radius = 10.0f;
 
         auto last_time = std::chrono::high_resolution_clock::now();
 

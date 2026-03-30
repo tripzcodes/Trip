@@ -129,6 +129,10 @@ private:
 
     glm::mat4 prev_view_proj_{1.0f};
     glm::vec3 camera_pos_cache_{0.0f};
+
+    // SDSM: scene depth range from visible entities (previous frame)
+    float scene_depth_min_ = 0.1f;
+    float scene_depth_max_ = 100.0f;
     glm::mat4 prev_view_proj_unjittered_{1.0f};
     uint32_t jitter_index_ = 0;
     glm::vec2 current_jitter_{0.0f};

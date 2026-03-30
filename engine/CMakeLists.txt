@@ -10,7 +10,9 @@ add_library(engine STATIC
     src/renderer/swapchain.cpp
     src/renderer/allocator.cpp
     src/renderer/mesh.cpp
+    src/renderer/mesh_simplifier.cpp
     src/renderer/model.cpp
+    src/renderer/lod_generator.cpp
     src/renderer/tinyobj_impl.cpp
     src/renderer/stb_impl.cpp
     src/renderer/texture.cpp

@@ -166,6 +166,8 @@ ModelData Model::load_obj(const Allocator& allocator, const std::string& path) {
               << indices.size() / 3 << " triangles\n";
 
     ModelData result;
+    result.vertices = vertices;
+    result.indices = indices;
     result.mesh = std::make_shared<Mesh>(allocator, vertices, indices);
     if (!materials.empty()) {
         if (!materials[0].diffuse_texname.empty()) {

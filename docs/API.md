@@ -136,6 +136,8 @@ class Mesh {
 ```cpp
 struct ModelData {
     std::shared_ptr<Mesh> mesh;
+    std::vector<Vertex> vertices;       // CPU-side data for LOD generation
+    std::vector<uint32_t> indices;      // CPU-side data for LOD generation
     std::string diffuse_texture_path;
     std::string normal_texture_path;
 };
@@ -145,7 +147,56 @@ class Model {
 };
 ```
 
-Computes tangents from UVs. Extracts `map_Kd` (diffuse) and `map_bump` / `map_Kn` (normal) from .mtl.
+Computes tangents from UVs. Extracts `map_Kd` (diffuse) and `map_bump` / `map_Kn` (normal) from .mtl. Retains CPU-side vertex/index data for mesh simplification and LOD generation.
+
+### MeshSimplifier
+
+```cpp
+struct SimplifyResult {
+    std::vector<Vertex> vertices;
+    std::vector<uint32_t> indices;
+};
+
+class MeshSimplifier {
+    // Vertex clustering decimation — O(V+T)
+    static SimplifyResult simplify(
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices,
+        float grid_size);
+
+    // Simplify and upload to GPU
+    static std::shared_ptr<Mesh> simplify_to_mesh(
+        const Allocator& allocator,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices,
+        float grid_size);
+};
+```
+
+Divides AABB into grid cells, merges vertices per cell, discards degenerate triangles. Larger `grid_size` = more reduction.
+
+### LODGenerator
+
+```cpp
+struct LODGeneratorConfig {
+    uint32_t num_levels = 3;
+    float base_distance = 30.0f;
+    float distance_ratio = 2.0f;
+    float reduction = 2.0f;         // grid_size multiplier per level
+    float cull_distance = 0.0f;     // 0 = no culling
+};
+
+class LODGenerator {
+    // Auto-generate LODComponent with progressively simplified meshes
+    static LODComponent generate(
+        const Allocator& allocator,
+        const std::vector<Vertex>& vertices,
+        const std::vector<uint32_t>& indices,
+        const LODGeneratorConfig& config = {});
+};
+```
+
+Level 0 = base mesh (no simplification). Subsequent levels use vertex clustering with increasing grid size.
 
 ### Texture
 
@@ -173,7 +224,7 @@ class Texture {
 ```cpp
 enum class ShadowMode { None, Fixed, Cascaded };
 
-constexpr uint32_t SHADOW_MAP_SIZE = 2048;
+constexpr uint32_t SHADOW_MAP_SIZE = 4096;
 constexpr uint32_t CASCADE_COUNT = 3;
 
 struct CascadeData {
@@ -199,7 +250,7 @@ class ShadowMap {
 };
 ```
 
-Both modes use texel-snapped ortho projections. PCSS soft shadows in the lighting shader.
+Both modes use texel-snapped ortho projections. SDSM auto-fits cascades to visible scene depth. PCSS soft shadows with hardware comparison sampler (bilinear depth test) in the lighting shader. Volumetric god rays via ray marching with Henyey-Greenstein phase function.
 
 ### Frustum
 
@@ -445,6 +496,9 @@ class Terrain {
     std::shared_ptr<Mesh> mesh() const;
     const TerrainConfig& config() const;
     float height_at(float world_x, float world_z) const;  // bilinear interpolated
+
+    // generate mesh at arbitrary grid resolution from stored heightmap
+    std::shared_ptr<Mesh> generate_mesh_at(const Allocator& allocator, uint32_t resolution) const;
 };
 ```
 

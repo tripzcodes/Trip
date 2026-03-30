@@ -80,7 +80,7 @@ void Terrain::generate(const Allocator& allocator) {
     float half = config_.size * 0.5f;
     float step = config_.size / (res - 1);
 
-    // generate heightmap
+    // generate heightmap at full resolution (stored for height_at queries)
     heightmap_.resize(res * res);
     for (uint32_t z = 0; z < res; z++) {
         for (uint32_t x = 0; x < res; x++) {
@@ -94,54 +94,61 @@ void Terrain::generate(const Allocator& allocator) {
         }
     }
 
-    // generate vertices
-    std::vector<Vertex> vertices(res * res);
-    glm::vec3 color_low{0.35f, 0.45f, 0.28f};  // green-ish for valleys
-    glm::vec3 color_high{0.55f, 0.50f, 0.40f};  // brown-ish for peaks
+    mesh_ = generate_mesh_at(allocator, res);
+}
 
-    for (uint32_t z = 0; z < res; z++) {
-        for (uint32_t x = 0; x < res; x++) {
-            uint32_t idx = z * res + x;
+std::shared_ptr<Mesh> Terrain::generate_mesh_at(const Allocator& allocator, uint32_t resolution) const {
+    float half = config_.size * 0.5f;
+    float step = config_.size / (resolution - 1);
+
+    glm::vec3 color_low{0.35f, 0.45f, 0.28f};
+    glm::vec3 color_high{0.55f, 0.50f, 0.40f};
+
+    std::vector<Vertex> vertices(resolution * resolution);
+    for (uint32_t z = 0; z < resolution; z++) {
+        for (uint32_t x = 0; x < resolution; x++) {
+            uint32_t idx = z * resolution + x;
             float wx = config_.offset.x - half + x * step;
             float wz = config_.offset.z - half + z * step;
-            float h = heightmap_[idx];
+            float h = height_at(wx, wz) - config_.offset.y;
 
             vertices[idx].position = {wx, config_.offset.y + h, wz};
             float t = (config_.height_scale > 0.0f) ? h / config_.height_scale : 0.0f;
             vertices[idx].color = glm::mix(color_low, color_high, glm::clamp(t, 0.0f, 1.0f));
             vertices[idx].uv = {
-                static_cast<float>(x) / (res - 1) * config_.size * 0.1f,
-                static_cast<float>(z) / (res - 1) * config_.size * 0.1f
+                static_cast<float>(x) / (resolution - 1) * config_.size * 0.1f,
+                static_cast<float>(z) / (resolution - 1) * config_.size * 0.1f
             };
         }
     }
 
-    // compute normals from height differences (central differencing)
-    for (uint32_t z = 0; z < res; z++) {
-        for (uint32_t x = 0; x < res; x++) {
-            float hL = (x > 0) ? heightmap_[z * res + x - 1] : heightmap_[z * res + x];
-            float hR = (x < res - 1) ? heightmap_[z * res + x + 1] : heightmap_[z * res + x];
-            float hD = (z > 0) ? heightmap_[(z - 1) * res + x] : heightmap_[z * res + x];
-            float hU = (z < res - 1) ? heightmap_[(z + 1) * res + x] : heightmap_[z * res + x];
+    // normals via central differencing
+    for (uint32_t z = 0; z < resolution; z++) {
+        for (uint32_t x = 0; x < resolution; x++) {
+            float wx = config_.offset.x - half + x * step;
+            float wz = config_.offset.z - half + z * step;
+            float hL = height_at(wx - step, wz) - config_.offset.y;
+            float hR = height_at(wx + step, wz) - config_.offset.y;
+            float hD = height_at(wx, wz - step) - config_.offset.y;
+            float hU = height_at(wx, wz + step) - config_.offset.y;
 
             glm::vec3 normal = glm::normalize(glm::vec3(hL - hR, 2.0f * step, hD - hU));
-            vertices[z * res + x].normal = normal;
+            vertices[z * resolution + x].normal = normal;
 
-            // tangent along +X, bitangent sign +1
             glm::vec3 tangent = glm::normalize(glm::vec3(1.0f, (hR - hL) / (2.0f * step), 0.0f));
             tangent = glm::normalize(tangent - normal * glm::dot(normal, tangent));
-            vertices[z * res + x].tangent = glm::vec4(tangent, 1.0f);
+            vertices[z * resolution + x].tangent = glm::vec4(tangent, 1.0f);
         }
     }
 
-    // generate indices (two triangles per grid cell)
+    // indices (two triangles per grid cell)
     std::vector<uint32_t> indices;
-    indices.reserve((res - 1) * (res - 1) * 6);
-    for (uint32_t z = 0; z < res - 1; z++) {
-        for (uint32_t x = 0; x < res - 1; x++) {
-            uint32_t tl = z * res + x;
+    indices.reserve((resolution - 1) * (resolution - 1) * 6);
+    for (uint32_t z = 0; z < resolution - 1; z++) {
+        for (uint32_t x = 0; x < resolution - 1; x++) {
+            uint32_t tl = z * resolution + x;
             uint32_t tr = tl + 1;
-            uint32_t bl = (z + 1) * res + x;
+            uint32_t bl = (z + 1) * resolution + x;
             uint32_t br = bl + 1;
 
             indices.push_back(tl);
@@ -154,7 +161,7 @@ void Terrain::generate(const Allocator& allocator) {
         }
     }
 
-    mesh_ = std::make_shared<Mesh>(allocator, vertices, indices);
+    return std::make_shared<Mesh>(allocator, vertices, indices);
 }
 
 } // namespace engine

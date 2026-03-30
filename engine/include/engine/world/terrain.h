@@ -31,6 +31,9 @@ public:
     // sample height at world XZ (bilinear interpolated)
     float height_at(float world_x, float world_z) const;
 
+    // generate mesh at arbitrary grid resolution (resamples stored heightmap)
+    std::shared_ptr<Mesh> generate_mesh_at(const Allocator& allocator, uint32_t resolution) const;
+
 private:
     void generate(const Allocator& allocator);
 

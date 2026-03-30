@@ -513,13 +513,24 @@ void Renderer::shadow_pass(VkCommandBuffer cmd, const Camera& camera) {
     // batch all casters by mesh for instanced shadow rendering
     auto renderable = scene_->view<TransformComponent, MeshComponent>();
     bool fixed = (shadow_mode == ShadowMode::Fixed);
+    glm::vec3 cam_pos = camera.position();
 
     std::unordered_map<Mesh*, std::vector<InstanceData>> shadow_batches;
     for (auto entity : renderable) {
         auto& mesh_comp = renderable.get<MeshComponent>(entity);
+        Mesh* draw_mesh = mesh_comp.mesh.get();
+        glm::mat4 world = scene_->world_transform(entity);
+
+        if (scene_->registry().all_of<LODComponent>(entity)) {
+            auto& lod = scene_->registry().get<LODComponent>(entity);
+            float dist = glm::length(cam_pos - glm::vec3(world[3]));
+            draw_mesh = lod.select(dist);
+            if (!draw_mesh) continue;
+        }
+
         InstanceData inst{};
-        inst.model = scene_->world_transform(entity);
-        shadow_batches[mesh_comp.mesh.get()].push_back(inst);
+        inst.model = world;
+        shadow_batches[draw_mesh].push_back(inst);
     }
 
     for (uint32_t c = 0; c < CASCADE_COUNT; c++) {

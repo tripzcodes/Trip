@@ -69,6 +69,15 @@ int main() {
         scene.add<engine::MeshComponent>(terrain_ent, engine::MeshComponent{terrain.mesh()});
         scene.add<engine::MaterialComponent>(terrain_ent);
 
+        // terrain LOD: 128x128 → 64x64 → 32x32
+        {
+            engine::LODComponent terrain_lod;
+            terrain_lod.levels.push_back({terrain.mesh(), 150.0f});
+            terrain_lod.levels.push_back({terrain.generate_mesh_at(allocator, 64), 300.0f});
+            terrain_lod.levels.push_back({terrain.generate_mesh_at(allocator, 32), 600.0f});
+            scene.add<engine::LODComponent>(terrain_ent, terrain_lod);
+        }
+
         engine::RigidBodyComponent terrain_rb{};
         terrain_rb.type = engine::RigidBodyComponent::Type::Static;
         terrain_rb.shape = engine::RigidBodyComponent::Shape::Box;
@@ -222,6 +231,11 @@ int main() {
                 s.get<engine::TransformComponent>(e).scale = glm::vec3(scale);
                 s.get<engine::TransformComponent>(e).rotation = {
                     rand_float(0, 15), rand_float(0, 360), rand_float(0, 15)};
+
+                engine::LODComponent lod;
+                lod.levels.push_back({cube_mesh, 64.0f});
+                lod.cull_distance = 64.0f;
+                s.add<engine::LODComponent>(e, lod);
 
                 engine::RigidBodyComponent rb{};
                 rb.type = engine::RigidBodyComponent::Type::Static;

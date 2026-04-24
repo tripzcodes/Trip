@@ -21,7 +21,11 @@
 #include <engine/renderer/text.h>
 #include <engine/core/file_watcher.h>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <iostream>
 #include <stdexcept>
@@ -285,6 +289,27 @@ int main() {
 
             camera.move_speed = gui.state().camera_speed;
             camera.update(input, dt);
+
+            // day-night cycle: advance time, drive sun pitch/yaw + intensity
+            if (gui.state().day_night_cycle) {
+                gui.state().time_of_day += dt / std::max(gui.state().day_length_seconds, 1.0f);
+                gui.state().time_of_day = std::fmod(gui.state().time_of_day, 1.0f);
+            }
+            {
+                // map [0,1] to a full day: t=0 midnight, 0.25 sunrise, 0.5 noon, 0.75 sunset
+                float t = gui.state().time_of_day;
+                float angle = (t - 0.25f) * 360.0f; // degrees around east-west axis
+                auto& tr = scene.get<engine::TransformComponent>(sun);
+                tr.rotation.x = -std::sin(glm::radians(angle)) * 89.0f; // pitch: -89 (noon) .. 89
+                tr.rotation.y = 30.0f + std::cos(glm::radians(angle)) * 30.0f;
+
+                // dim sun below horizon
+                auto& dl = scene.get<engine::DirectionalLightComponent>(sun);
+                float elev = std::sin(glm::radians(angle)); // -1 noon, +1 midnight
+                float daylight = glm::clamp(-elev * 2.0f + 0.2f, 0.0f, 1.0f);
+                dl.intensity = glm::mix(0.02f, 3.0f, daylight);
+                dl.ambient_intensity = glm::mix(0.05f, 1.0f, daylight);
+            }
 
             // update audio listener to camera position
             audio.set_listener(camera.position(), camera.front(), glm::vec3(0, 1, 0));

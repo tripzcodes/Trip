@@ -243,12 +243,49 @@ vec3 brdf_contrib(vec3 albedo, float metallic, float roughness,
     return (kD * albedo / PI + specular) * radiance * NdotL;
 }
 
+// analytic procedural sky — two-layer (zenith / horizon) with a sun disc
+// and forward-scattered haze. cheap enough for fullscreen lighting pass.
+vec3 sky_color(vec3 view_dir, vec3 sun_dir) {
+    float sun_elev = clamp(sun_dir.y, -0.2, 1.0);
+    float daylight = smoothstep(-0.05, 0.25, sun_elev);
+
+    vec3 zenith_day = vec3(0.12, 0.32, 0.78);
+    vec3 horizon_day = vec3(0.78, 0.62, 0.45);
+    vec3 zenith_night = vec3(0.01, 0.02, 0.05);
+    vec3 horizon_night = vec3(0.08, 0.06, 0.12);
+
+    vec3 zenith = mix(zenith_night, zenith_day, daylight);
+    vec3 horizon = mix(horizon_night, horizon_day, daylight);
+
+    // sunset warmth kicks in near horizon
+    float sunset = smoothstep(0.35, 0.0, sun_elev) * smoothstep(-0.05, 0.1, sun_elev);
+    horizon = mix(horizon, vec3(1.0, 0.4, 0.15), sunset * 0.6);
+
+    float h = clamp(view_dir.y, -0.1, 1.0);
+    vec3 sky = mix(horizon, zenith, smoothstep(0.0, 0.45, h));
+
+    // sun disc + haze
+    float mu = clamp(dot(view_dir, sun_dir), 0.0, 1.0);
+    float disc = smoothstep(0.9992, 0.9998, mu);
+    float haze = pow(mu, 8.0);
+    vec3 sun_tint = mix(vec3(1.0, 0.45, 0.2), vec3(1.0, 0.98, 0.9),
+                        smoothstep(0.0, 0.4, sun_elev));
+    vec3 sun_term = sun_tint * (disc * 30.0 + haze * 0.4) * daylight;
+
+    return sky + sun_term;
+}
+
 void main() {
     vec4 albedo_sample = texture(gbuf_albedo, frag_uv);
     vec4 normal_sample = texture(gbuf_normal, frag_uv);
 
     if (length(normal_sample.rgb) < 0.01) {
-        out_color = vec4(light.clear_color.rgb, 1.0);
+        // unproject UV to a world-space view direction and sample the sky
+        vec4 ndc = vec4(frag_uv * 2.0 - 1.0, 1.0, 1.0);
+        vec4 world = light.inv_view_proj * ndc;
+        vec3 view_dir = normalize(world.xyz / world.w - light.camera_pos.xyz);
+        vec3 sun_dir = normalize(-light.light_dir.xyz);
+        out_color = vec4(sky_color(view_dir, sun_dir), 1.0);
         return;
     }
 

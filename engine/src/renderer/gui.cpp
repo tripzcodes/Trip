@@ -119,6 +119,15 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
         ImGui::SliderFloat("TAA Sharpness", &state_.taa_sharpness, 0.0f, 1.0f);
     }
 
+    ImGui::Separator();
+    ImGui::Text("Sky / Day-Night");
+    ImGui::Checkbox("Auto Day-Night", &state_.day_night_cycle);
+    ImGui::SliderFloat("Time of Day", &state_.time_of_day, 0.0f, 1.0f);
+    if (state_.day_night_cycle) {
+        ImGui::SliderFloat("Day Length (s)", &state_.day_length_seconds, 10.0f, 600.0f);
+    }
+
+    ImGui::Separator();
     const char* shadow_modes[] = { "None", "Fixed", "Cascaded" };
     ImGui::Combo("Shadows", &state_.shadow_mode, shadow_modes, 3);
     if (state_.shadow_mode == 2) {

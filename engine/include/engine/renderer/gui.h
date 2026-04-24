@@ -48,6 +48,11 @@ struct GuiState {
     float master_volume = 1.0f;
     bool music_playing = true;
 
+    // day-night cycle
+    bool day_night_cycle = false;
+    float day_length_seconds = 120.0f;
+    float time_of_day = 0.25f; // 0=midnight, 0.5=noon
+
     // save/load triggers (set to true for one frame when button clicked)
     bool save_scene = false;
     bool load_scene = false;

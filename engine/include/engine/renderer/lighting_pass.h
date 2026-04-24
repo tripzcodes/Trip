@@ -11,6 +11,16 @@ class GBuffer;
 class Swapchain;
 class VulkanContext;
 
+constexpr uint32_t MAX_PUNCTUAL_LIGHTS = 16;
+
+// std140-packed light entry — shared with shader
+struct PunctualLight {
+    glm::vec4 position_type;   // xyz=world position, w=type (0=point, 1=spot)
+    glm::vec4 direction_range; // xyz=world direction (spot only), w=max range
+    glm::vec4 color_intensity; // rgb=color, a=intensity
+    glm::vec4 cone;            // x=cos(inner), y=cos(outer), zw=pad
+};
+
 struct LightData {
     glm::vec4 light_dir;
     glm::vec4 light_color;
@@ -23,6 +33,8 @@ struct LightData {
     glm::vec4 camera_forward; // xyz = camera forward direction
     glm::mat4 view_proj;
     glm::mat4 inv_view_proj;
+    glm::uvec4 light_count;   // x = punctual light count
+    PunctualLight lights[MAX_PUNCTUAL_LIGHTS];
 };
 
 class LightingPass {

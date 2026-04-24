@@ -235,6 +235,29 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            // point light
+            if (registry.all_of<PointLightComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Point Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& l = registry.get<PointLightComponent>(entity);
+                    ImGui::ColorEdit3("Color##pt", &l.color.x);
+                    ImGui::SliderFloat("Intensity##pt", &l.intensity, 0.0f, 50.0f);
+                    ImGui::SliderFloat("Range##pt", &l.range, 0.1f, 100.0f);
+                }
+            }
+
+            // spot light
+            if (registry.all_of<SpotLightComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Spot Light", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& l = registry.get<SpotLightComponent>(entity);
+                    ImGui::ColorEdit3("Color##sp", &l.color.x);
+                    ImGui::SliderFloat("Intensity##sp", &l.intensity, 0.0f, 50.0f);
+                    ImGui::SliderFloat("Range##sp", &l.range, 0.1f, 100.0f);
+                    ImGui::SliderFloat("Inner Cone°", &l.inner_cone_deg, 0.0f, 89.0f);
+                    ImGui::SliderFloat("Outer Cone°", &l.outer_cone_deg, 0.0f, 89.0f);
+                    if (l.outer_cone_deg < l.inner_cone_deg) l.outer_cone_deg = l.inner_cone_deg;
+                }
+            }
+
             ImGui::TreePop();
         }
         ImGui::PopID();

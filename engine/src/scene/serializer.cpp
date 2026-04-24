@@ -43,6 +43,26 @@ static json serialize_entity(const entt::registry& reg, entt::entity entity) {
         };
     }
 
+    if (reg.all_of<PointLightComponent>(entity)) {
+        auto& l = reg.get<PointLightComponent>(entity);
+        j["point_light"] = {
+            {"color", vec3_to_json(l.color)},
+            {"intensity", l.intensity},
+            {"range", l.range}
+        };
+    }
+
+    if (reg.all_of<SpotLightComponent>(entity)) {
+        auto& l = reg.get<SpotLightComponent>(entity);
+        j["spot_light"] = {
+            {"color", vec3_to_json(l.color)},
+            {"intensity", l.intensity},
+            {"range", l.range},
+            {"inner_cone_deg", l.inner_cone_deg},
+            {"outer_cone_deg", l.outer_cone_deg}
+        };
+    }
+
     if (reg.all_of<MaterialComponent>(entity)) {
         auto& m = reg.get<MaterialComponent>(entity);
         j["material"] = {
@@ -95,6 +115,24 @@ static void deserialize_entity(Scene& scene, const json& j) {
         l.intensity = jl["intensity"];
         l.ambient_color = json_to_vec3(jl["ambient_color"]);
         l.ambient_intensity = jl["ambient_intensity"];
+    }
+
+    if (j.contains("point_light")) {
+        auto& jl = j["point_light"];
+        auto& l = scene.add<PointLightComponent>(entity);
+        l.color = json_to_vec3(jl["color"]);
+        l.intensity = jl["intensity"];
+        l.range = jl["range"];
+    }
+
+    if (j.contains("spot_light")) {
+        auto& jl = j["spot_light"];
+        auto& l = scene.add<SpotLightComponent>(entity);
+        l.color = json_to_vec3(jl["color"]);
+        l.intensity = jl["intensity"];
+        l.range = jl["range"];
+        l.inner_cone_deg = jl["inner_cone_deg"];
+        l.outer_cone_deg = jl["outer_cone_deg"];
     }
 
     if (j.contains("material")) {

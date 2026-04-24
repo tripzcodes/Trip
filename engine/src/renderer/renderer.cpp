@@ -14,6 +14,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 
 #include <array>
+#include <cmath>
 #include <limits>
 #include <stdexcept>
 #include <unordered_map>
@@ -657,6 +658,37 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
     ld.camera_forward = glm::vec4(camera.front(), 0.0f);
     ld.view_proj = proj_unjittered * view;
     ld.inv_view_proj = glm::inverse(ld.view_proj);
+
+    // gather punctual lights
+    uint32_t n_lights = 0;
+    auto point_view = scene_->view<PointLightComponent, TransformComponent>();
+    for (auto e : point_view) {
+        if (n_lights >= MAX_PUNCTUAL_LIGHTS) break;
+        auto& pl = point_view.get<PointLightComponent>(e);
+        glm::mat4 w = scene_->world_transform(e);
+        ld.lights[n_lights].position_type = glm::vec4(glm::vec3(w[3]), 0.0f);
+        ld.lights[n_lights].direction_range = glm::vec4(0.0f, -1.0f, 0.0f, pl.range);
+        ld.lights[n_lights].color_intensity = glm::vec4(pl.color, pl.intensity);
+        ld.lights[n_lights].cone = glm::vec4(-1.0f, -1.0f, 0.0f, 0.0f);
+        n_lights++;
+    }
+    auto spot_view = scene_->view<SpotLightComponent, TransformComponent>();
+    for (auto e : spot_view) {
+        if (n_lights >= MAX_PUNCTUAL_LIGHTS) break;
+        auto& sl = spot_view.get<SpotLightComponent>(e);
+        auto& tr = spot_view.get<TransformComponent>(e);
+        glm::mat4 w = scene_->world_transform(e);
+        glm::vec3 dir = SpotLightComponent::direction_from_rotation(tr.rotation);
+        ld.lights[n_lights].position_type = glm::vec4(glm::vec3(w[3]), 1.0f);
+        ld.lights[n_lights].direction_range = glm::vec4(dir, sl.range);
+        ld.lights[n_lights].color_intensity = glm::vec4(sl.color, sl.intensity);
+        float inner_cos = std::cos(glm::radians(sl.inner_cone_deg));
+        float outer_cos = std::cos(glm::radians(sl.outer_cone_deg));
+        ld.lights[n_lights].cone = glm::vec4(inner_cos, outer_cos, 0.0f, 0.0f);
+        n_lights++;
+    }
+    ld.light_count = glm::uvec4(n_lights, 0, 0, 0);
+
     lighting_->update(current_frame_, ld);
 
     // common state

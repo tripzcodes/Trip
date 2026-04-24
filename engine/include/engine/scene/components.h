@@ -94,6 +94,31 @@ struct BoundsComponent {
     }
 };
 
+struct PointLightComponent {
+    glm::vec3 color{1.0f};
+    float intensity = 5.0f;
+    float range = 15.0f;
+};
+
+struct SpotLightComponent {
+    glm::vec3 color{1.0f};
+    float intensity = 10.0f;
+    float range = 20.0f;
+    float inner_cone_deg = 15.0f; // full-bright cone half-angle
+    float outer_cone_deg = 25.0f; // falloff ends here
+
+    // direction derives from TransformComponent rotation (same convention as DirectionalLight)
+    static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees) {
+        float pitch = glm::radians(rotation_degrees.x);
+        float yaw = glm::radians(rotation_degrees.y);
+        return glm::normalize(glm::vec3(
+            cos(pitch) * sin(yaw),
+            sin(pitch),
+            cos(pitch) * cos(yaw)
+        ));
+    }
+};
+
 struct DirectionalLightComponent {
     glm::vec3 color{1.0f};
     float intensity = 2.0f;

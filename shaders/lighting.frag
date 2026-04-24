@@ -2,6 +2,14 @@
 
 const float PI = 3.14159265359;
 const int CASCADE_COUNT = 3;
+const int MAX_PUNCTUAL_LIGHTS = 16;
+
+struct PunctualLight {
+    vec4 position_type;   // xyz=world pos, w=type (0=point, 1=spot)
+    vec4 direction_range; // xyz=direction, w=range
+    vec4 color_intensity; // rgb=color, a=intensity
+    vec4 cone;            // x=cos(inner), y=cos(outer)
+};
 
 layout(binding = 0) uniform LightData {
     vec4 light_dir;
@@ -15,6 +23,8 @@ layout(binding = 0) uniform LightData {
     vec4 camera_forward; // xyz = camera forward direction
     mat4 view_proj;
     mat4 inv_view_proj;
+    uvec4 light_count;
+    PunctualLight lights[MAX_PUNCTUAL_LIGHTS];
 } light;
 
 layout(binding = 1) uniform sampler2D gbuf_albedo;
@@ -214,6 +224,25 @@ vec3 compute_volumetrics(vec3 world_pos) {
     return accumulated * light_color * phase;
 }
 
+// Cook-Torrance BRDF evaluation against a single directional input L, with the
+// caller providing the radiance that arrives from that direction.
+vec3 brdf_contrib(vec3 albedo, float metallic, float roughness,
+                  vec3 N, vec3 V, vec3 L, vec3 F0, vec3 radiance) {
+    vec3 H = normalize(V + L);
+    float D = distribution_ggx(N, H, roughness);
+    float G = geometry_smith(N, V, L, roughness);
+    vec3  F = fresnel_schlick(max(dot(H, V), 0.0), F0);
+
+    vec3 numerator = D * G * F;
+    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    vec3 specular = numerator / denominator;
+
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    float NdotL = max(dot(N, L), 0.0);
+
+    return (kD * albedo / PI + specular) * radiance * NdotL;
+}
+
 void main() {
     vec4 albedo_sample = texture(gbuf_albedo, frag_uv);
     vec4 normal_sample = texture(gbuf_normal, frag_uv);
@@ -231,26 +260,39 @@ void main() {
     vec3 N = normalize(normal_sample.rgb * 2.0 - 1.0);
     vec3 V = normalize(light.camera_pos.xyz - world_pos);
     vec3 L = normalize(-light.light_dir.xyz);
-    vec3 H = normalize(V + L);
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
 
-    float D = distribution_ggx(N, H, roughness);
-    float G = geometry_smith(N, V, L, roughness);
-    vec3 F = fresnel_schlick(max(dot(H, V), 0.0), F0);
-
-    vec3 numerator = D * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
-    vec3 specular = numerator / denominator;
-
-    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-
-    float NdotL = max(dot(N, L), 0.0);
-
     float shadow = shadow_calc(world_pos);
+    vec3 radiance_dir = light.light_color.rgb * light.light_color.a * shadow;
+    vec3 Lo = brdf_contrib(albedo, metallic, roughness, N, V, L, F0, radiance_dir);
 
-    vec3 radiance = light.light_color.rgb * light.light_color.a;
-    vec3 Lo = (kD * albedo / PI + specular) * radiance * NdotL * shadow;
+    // punctual lights (point + spot)
+    for (uint i = 0u; i < light.light_count.x; i++) {
+        PunctualLight pl = light.lights[i];
+        vec3  to_light = pl.position_type.xyz - world_pos;
+        float dist = length(to_light);
+        float range = pl.direction_range.w;
+        if (dist >= range) continue;
+
+        vec3  Ll = to_light / max(dist, 0.0001);
+        // inverse-square with smooth windowing at range (Frostbite)
+        float atten = 1.0 / (dist * dist + 0.01);
+        float window = clamp(1.0 - pow(dist / range, 4.0), 0.0, 1.0);
+        atten *= window * window;
+
+        // spot cone attenuation
+        if (pl.position_type.w > 0.5) {
+            float cos_angle = dot(normalize(pl.direction_range.xyz), -Ll);
+            float inner = pl.cone.x;
+            float outer = pl.cone.y;
+            float cone = smoothstep(outer, inner, cos_angle);
+            atten *= cone;
+        }
+
+        vec3 radiance = pl.color_intensity.rgb * pl.color_intensity.a * atten;
+        Lo += brdf_contrib(albedo, metallic, roughness, N, V, Ll, F0, radiance);
+    }
 
     vec3 ambient = light.ambient_color.rgb * light.ambient_color.a * albedo;
 

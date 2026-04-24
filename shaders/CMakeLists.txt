@@ -41,5 +41,7 @@ compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/gbuffer_skinned.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/shadow_skinned.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/particle.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/particle.frag)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.vert)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.frag)
 
 add_custom_target(shaders ALL DEPENDS ${SPV_FILES})

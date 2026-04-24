@@ -211,8 +211,15 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         post_process_->render_pass(), swapchain.extent(),
         shader_dir, MAX_FRAMES_IN_FLIGHT);
 
+    decals_ = std::make_unique<DecalPass>(context, allocator,
+        *gbuffer_, swapchain.extent(), shader_dir, MAX_FRAMES_IN_FLIGHT);
+
     create_command_resources();
     create_sync_objects();
+}
+
+VkDescriptorSet Renderer::allocate_decal_set(const Texture& tex) {
+    return decals_->allocate_texture_set(tex);
 }
 
 VkDescriptorSet Renderer::allocate_material_set(const Texture& albedo_tex, const Texture& normal_tex) {
@@ -367,6 +374,10 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
 
     profiler_->begin_region(cmd, "Geometry");
     geometry_pass(cmd, camera);
+    profiler_->end_region(cmd);
+
+    profiler_->begin_region(cmd, "Decals");
+    decal_pass(cmd, camera);
     profiler_->end_region(cmd);
 
     // Hi-Z pyramid generation (after depth is written, before lighting reads it)
@@ -1175,6 +1186,34 @@ void Renderer::simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& ca
                      gpu_particles.data(),
                      static_cast<uint32_t>(gpu_particles.size()),
                      proj * view, cam_right, cam_up);
+}
+
+void Renderer::decal_pass(VkCommandBuffer cmd, const Camera& camera) {
+    if (!scene_ || !decals_) return;
+
+    auto dv = scene_->view<DecalComponent, TransformComponent>();
+    if (dv.size_hint() == 0) return;
+
+    std::vector<DecalPass::Instance> instances;
+    instances.reserve(dv.size_hint());
+    for (auto e : dv) {
+        auto& d = dv.get<DecalComponent>(e);
+        if (!d.texture_set) continue;
+        glm::mat4 world = scene_->world_transform(e);
+        DecalPass::Instance inst{};
+        inst.world = world;
+        inst.inv_world = glm::inverse(world);
+        inst.tint = d.tint;
+        inst.texture_set = d.texture_set;
+        instances.push_back(inst);
+    }
+    if (instances.empty()) return;
+
+    float aspect = static_cast<float>(swapchain_.extent().width) /
+                   static_cast<float>(swapchain_.extent().height);
+    glm::mat4 view = camera.view_matrix();
+    glm::mat4 proj = camera.projection_matrix(aspect);
+    decals_->render(cmd, current_frame_, proj * view, instances);
 }
 
 } // namespace engine

@@ -181,6 +181,30 @@ class ParticlePass {
 
 Additive-blended camera-facing billboard quads. Used internally by the post-process pass to render particles on top of the tonemapped output.
 
+### DecalPass
+
+```cpp
+class DecalPass {
+    struct Instance {
+        glm::mat4 world;
+        glm::mat4 inv_world;
+        glm::vec4 tint;
+        VkDescriptorSet texture_set;
+    };
+
+    DecalPass(const VulkanContext& context, const Allocator& allocator,
+              const GBuffer& gbuffer, VkExtent2D extent,
+              const std::string& shader_dir, uint32_t frames_in_flight);
+
+    VkDescriptorSet allocate_texture_set(const Texture& texture);
+    void render(VkCommandBuffer cmd, uint32_t frame,
+                const glm::mat4& view_proj,
+                const std::vector<Instance>& decals);
+};
+```
+
+Deferred box decals. Between geometry and lighting, renders a unit cube per decal; the fragment shader samples `gbuf_position`, transforms world space into decal-local via `inv_world`, discards outside `[-0.5, 0.5]^3`, samples the decal texture projected down the local -Y axis, and alpha-blends the result back into the albedo attachment. Front-face culling keeps the draw alive when the camera sits inside the decal volume. Use `Renderer::allocate_decal_set(texture)` to obtain a `texture_set` for a `DecalComponent`.
+
 ### Mesh
 
 ```cpp
@@ -540,6 +564,11 @@ struct SpotLightComponent {
     float inner_cone_deg = 15.0f;
     float outer_cone_deg = 25.0f;
     static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees);
+};
+
+struct DecalComponent {
+    VkDescriptorSet texture_set = VK_NULL_HANDLE;
+    glm::vec4 tint{1.0f};
 };
 
 struct Particle {

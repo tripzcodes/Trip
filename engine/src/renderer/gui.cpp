@@ -254,6 +254,14 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            // decal
+            if (registry.all_of<DecalComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Decal", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& d = registry.get<DecalComponent>(entity);
+                    ImGui::ColorEdit4("Tint", &d.tint.x);
+                }
+            }
+
             // particle emitter
             if (registry.all_of<ParticleEmitterComponent>(entity)) {
                 if (ImGui::CollapsingHeader("Particle Emitter", ImGuiTreeNodeFlags_DefaultOpen)) {

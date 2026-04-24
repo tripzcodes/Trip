@@ -14,6 +14,7 @@
 #include <engine/renderer/gpu_profiler.h>
 #include <engine/renderer/hiz.h>
 #include <engine/renderer/particle_pass.h>
+#include <engine/renderer/decal_pass.h>
 #include <engine/renderer/taa.h>
 #include <engine/renderer/texture.h>
 
@@ -48,6 +49,10 @@ public:
     // allocate a material descriptor set for a texture and write the sampler binding
     VkDescriptorSet allocate_material_set(const Texture& albedo_tex, const Texture& normal_tex);
     VkDescriptorSet allocate_material_set(const Texture& albedo_tex);
+
+    // allocate a decal descriptor set bound to a texture, suitable for
+    // assigning to DecalComponent::texture_set
+    VkDescriptorSet allocate_decal_set(const Texture& decal_tex);
 
     bool begin_frame();
     void render(const Camera& camera, Gui& gui, TextRenderer* text = nullptr);
@@ -93,6 +98,7 @@ private:
     void lighting_pass(VkCommandBuffer cmd, const Camera& camera);
     void post_process_pass(VkCommandBuffer cmd);
     void simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& camera, float dt);
+    void decal_pass(VkCommandBuffer cmd, const Camera& camera);
     glm::vec3 compute_scene_min() const;
     glm::vec3 compute_scene_max() const;
 
@@ -124,6 +130,7 @@ private:
     std::unique_ptr<TAAPass> taa_;
     std::unique_ptr<GpuProfiler> profiler_;
     std::unique_ptr<ParticlePass> particles_;
+    std::unique_ptr<DecalPass> decals_;
 
     // material textures
     VkDescriptorSetLayout material_layout_ = VK_NULL_HANDLE;

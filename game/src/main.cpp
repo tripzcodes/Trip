@@ -191,6 +191,20 @@ int main() {
         auto cube_mesh = cube_model.mesh;
         auto cube_tex = cube_model.tex_set;
 
+        // test decal: a checker texture projected down onto the terrain near the origin
+        auto decal_tex = std::make_shared<engine::Texture>(
+            context, allocator, assets_dir + "/models/checker.png");
+        VkDescriptorSet decal_set = renderer.allocate_decal_set(*decal_tex);
+        {
+            auto d = scene.create("Decal");
+            auto& tr = scene.get<engine::TransformComponent>(d);
+            tr.position = { 0.0f, 0.5f, 0.0f };
+            tr.scale = { 6.0f, 3.0f, 6.0f };
+            auto& dc = scene.add<engine::DecalComponent>(d);
+            dc.texture_set = decal_set;
+            dc.tint = glm::vec4(1.0f, 1.0f, 1.0f, 0.9f);
+        }
+
         // chunk manager
         constexpr float chunk_size = 32.0f;
         constexpr uint32_t view_radius = 3;

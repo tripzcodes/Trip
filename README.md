@@ -62,6 +62,8 @@ shaders/          glsl → spir-v
 
 `Point + spot lights` · up to 16 punctual lights per frame, inverse-square + range-window attenuation, smooth cone falloff
 
+`Projected decals` · deferred box decals rendered between geometry and lighting, sample G-Buffer position, alpha-blend into albedo
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle

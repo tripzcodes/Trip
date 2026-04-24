@@ -137,6 +137,13 @@ struct DirectionalLightComponent {
     }
 };
 
+struct DecalComponent {
+    // VkDescriptorSet pointing at the decal color texture. Use
+    // Renderer::allocate_decal_set() to obtain one from a Texture.
+    VkDescriptorSet texture_set = VK_NULL_HANDLE;
+    glm::vec4 tint{1.0f};
+};
+
 struct Particle {
     glm::vec3 position{0.0f};
     float size = 0.2f;

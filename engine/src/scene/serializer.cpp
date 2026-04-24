@@ -191,6 +191,18 @@ static json serialize_settings(const SceneSettings& s) {
             {"tone_map_mode", s.tone_map_mode},
             {"exposure", s.exposure},
             {"clear_color", {s.clear_color[0], s.clear_color[1], s.clear_color[2]}}
+        }},
+        {"environment", {
+            {"day_night_cycle", s.day_night_cycle},
+            {"day_length_seconds", s.day_length_seconds},
+            {"time_of_day", s.time_of_day}
+        }},
+        {"advanced", {
+            {"ssr_enabled", s.ssr_enabled},
+            {"volumetric_enabled", s.volumetric_enabled},
+            {"volumetric_density", s.volumetric_density},
+            {"gpu_culling", s.gpu_culling},
+            {"occlusion_culling", s.occlusion_culling}
         }}
     };
 }
@@ -231,6 +243,20 @@ static void deserialize_settings(SceneSettings& s, const json& j) {
             s.clear_color[1] = jp["clear_color"][1];
             s.clear_color[2] = jp["clear_color"][2];
         }
+    }
+    if (j.contains("environment")) {
+        auto& je = j["environment"];
+        if (je.contains("day_night_cycle")) s.day_night_cycle = je["day_night_cycle"];
+        if (je.contains("day_length_seconds")) s.day_length_seconds = je["day_length_seconds"];
+        if (je.contains("time_of_day")) s.time_of_day = je["time_of_day"];
+    }
+    if (j.contains("advanced")) {
+        auto& ja = j["advanced"];
+        if (ja.contains("ssr_enabled")) s.ssr_enabled = ja["ssr_enabled"];
+        if (ja.contains("volumetric_enabled")) s.volumetric_enabled = ja["volumetric_enabled"];
+        if (ja.contains("volumetric_density")) s.volumetric_density = ja["volumetric_density"];
+        if (ja.contains("gpu_culling")) s.gpu_culling = ja["gpu_culling"];
+        if (ja.contains("occlusion_culling")) s.occlusion_culling = ja["occlusion_culling"];
     }
 }
 

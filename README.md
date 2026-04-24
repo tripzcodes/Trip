@@ -4,7 +4,7 @@
 
 **Custom Vulkan game engine built from scratch in C++**
 
-Deferred renderer · PBR · Normal mapping · TAA · SSR · GPU culling · PCSS shadows · Volumetric lighting · LOD · Skeletal animation · Terrain · Audio · Text · Physics
+Deferred renderer · PBR · Normal mapping · TAA · SSR · GPU culling · PCSS shadows · Volumetric lighting · Point/spot lights · Procedural sky · Particles · Day-night cycle · LOD · Skeletal animation · Terrain · Audio · Text · Physics · GPU profiling · Hot-reload
 
 [![C++17](https://img.shields.io/badge/C%2B%2B-17-00599C?style=flat-square&logo=cplusplus&logoColor=white)](https://en.cppreference.com/w/cpp/17)
 [![Vulkan](https://img.shields.io/badge/Vulkan-1.x-AC162C?style=flat-square&logo=vulkan&logoColor=white)](https://www.vulkan.org/)
@@ -60,6 +60,18 @@ shaders/          glsl → spir-v
 
 `Volumetric lighting` · ray-marched god rays with Henyey-Greenstein phase function, shadow-aware fog
 
+`Point + spot lights` · up to 16 punctual lights per frame, inverse-square + range-window attenuation, smooth cone falloff
+
+`Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
+
+`Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle
+
+`Particle system` · CPU-simulated billboard emitters, additive blending, per-emitter gravity/velocity/lifetime, configurable start/end size + color
+
+`GPU profiling` · per-pass Vulkan timestamp queries surfaced in ImGui (Shadow, Geometry, Hi-Z, Lighting, TAA, Post)
+
+`Asset hot-reload` · `FileWatcher` polling last-write-time; edit a shader SPV, rebuild with CMake, and the lighting pipeline swaps in place
+
 `Frustum culling` · Gribb-Hartmann plane extraction
 
 `GPU-driven culling` · compute shader frustum test, atomic compaction, `vkCmdDrawIndexedIndirect`
@@ -82,13 +94,13 @@ shaders/          glsl → spir-v
 
 `Procedural terrain` · fractal noise heightmap, height-based coloring, bilinear height queries
 
-`Scene serialization` · JSON save/load of entities, camera, and engine settings
+`Scene serialization` · JSON save/load of entities (lights, materials, bounds, rigid bodies, point/spot lights), camera, engine settings, environment, and advanced toggles
 
 `Text rendering` · TTF bitmap atlas via stb_truetype, screen-space alpha-blended quads
 
 `Audio` · miniaudio backend, 3D spatialization, distance attenuation, WAV/MP3/FLAC/OGG
 
-`ImGui` · debug overlay with real-time parameter tweaking
+`ImGui` · debug overlay with real-time parameter tweaking — per-entity light, material, and particle editors
 
 ## Stack
 

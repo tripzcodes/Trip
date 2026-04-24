@@ -63,6 +63,22 @@ class Camera {
 };
 ```
 
+### FileWatcher
+
+```cpp
+class FileWatcher {
+    using Callback = std::function<void(const std::string& path)>;
+
+    void watch(const std::string& path, Callback cb);
+    void unwatch(const std::string& path);
+
+    // fires callbacks for every path whose last_write_time has changed
+    uint32_t poll();
+};
+```
+
+Polling file watcher. Drive from the game loop (throttled — 0.5 s is plenty). Paired with `Renderer::reload_lighting_shader()` for hot-reloading the lighting pipeline after rebuilding SPVs.
+
 ---
 
 ## Renderer
@@ -95,6 +111,8 @@ class Renderer {
     float taa_sharpness = 0.0f;
     bool gpu_culling = false;
     bool ssr_enabled = false;
+    bool volumetric_enabled = false;
+    float volumetric_density = 0.015f;
     ShadowMode shadow_mode = ShadowMode::Fixed;
     float shadow_radius = 150.0f;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
@@ -103,8 +121,65 @@ class Renderer {
     // stats (read after render)
     uint32_t draw_calls = 0;
     uint32_t culled_objects = 0;
+
+    // GPU per-pass timings (ms), measured via vkCmdWriteTimestamp — populated
+    // each frame once the backing query pool's results have resolved
+    const std::vector<GpuProfiler::Region>& gpu_timings() const;
+
+    // recompile the lighting pipeline from its SPV files. use with FileWatcher
+    // to hot-reload shaders after rebuilding
+    bool reload_lighting_shader();
+    const std::string& lighting_vert_path() const;
+    const std::string& lighting_frag_path() const;
 };
 ```
+
+### GpuProfiler
+
+```cpp
+class GpuProfiler {
+    struct Region {
+        std::string name;
+        double ms;
+    };
+
+    GpuProfiler(const VulkanContext& context, uint32_t frames_in_flight,
+                uint32_t max_regions = 16);
+
+    void begin_frame(VkCommandBuffer cmd, uint32_t frame);
+    void begin_region(VkCommandBuffer cmd, const std::string& name);
+    void end_region(VkCommandBuffer cmd);
+
+    const std::vector<Region>& regions() const;
+};
+```
+
+One Vulkan query pool per frame in flight, double-buffered: results from the slot's previous use are read at `begin_frame()` (fence already waited), then the pool is reset for fresh writes. Silently disables itself when `timestampComputeAndGraphics` is unsupported.
+
+### ParticlePass
+
+```cpp
+struct ParticleInstance {
+    glm::vec4 pos_size;  // xyz = world pos, w = size
+    glm::vec4 color;     // rgba, modulates a * (1 - r^2)^2 falloff
+};
+
+class ParticlePass {
+    ParticlePass(const VulkanContext& context, const Allocator& allocator,
+                 VkRenderPass host_pass, VkExtent2D extent,
+                 const std::string& shader_dir,
+                 uint32_t frames_in_flight,
+                 uint32_t max_instances = 4096);
+
+    void draw(VkCommandBuffer cmd, uint32_t frame,
+              const ParticleInstance* instances, uint32_t count,
+              const glm::mat4& view_proj,
+              const glm::vec3& cam_right,
+              const glm::vec3& cam_up);
+};
+```
+
+Additive-blended camera-facing billboard quads. Used internally by the post-process pass to render particles on top of the tonemapped output.
 
 ### Mesh
 
@@ -452,6 +527,48 @@ struct DirectionalLightComponent {
     static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees);
 };
 
+struct PointLightComponent {
+    glm::vec3 color{1.0f};
+    float intensity = 5.0f;
+    float range = 15.0f;
+};
+
+struct SpotLightComponent {
+    glm::vec3 color{1.0f};
+    float intensity = 10.0f;
+    float range = 20.0f;
+    float inner_cone_deg = 15.0f;
+    float outer_cone_deg = 25.0f;
+    static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees);
+};
+
+struct Particle {
+    glm::vec3 position;
+    float size;
+    glm::vec4 color;
+    glm::vec3 velocity;
+    float life;       // remaining lifetime
+    float max_life;
+};
+
+struct ParticleEmitterComponent {
+    float rate = 30.0f;
+    float lifetime = 2.0f;
+    glm::vec3 velocity{0, 4, 0};
+    glm::vec3 velocity_jitter{1.5f, 0.5f, 1.5f};
+    glm::vec3 gravity{0, -3, 0};
+    glm::vec4 start_color{1, 0.55f, 0.15f, 1};
+    glm::vec4 end_color{0.5f, 0.1f, 0, 0};
+    float start_size = 0.25f;
+    float end_size = 0.0f;
+    uint32_t max_particles = 256;
+    bool emitting = true;
+
+    float accumulator = 0.0f;
+    uint32_t rng_state = 0x9e3779b9u;
+    std::vector<Particle> particles;
+};
+
 struct LODComponent {
     std::vector<LODLevel> levels;
     float cull_distance = 0.0f;
@@ -459,10 +576,19 @@ struct LODComponent {
 };
 ```
 
+Up to 16 punctual lights (point + spot combined) are uploaded per frame. Point lights use inverse-square + range-window attenuation; spot lights additionally apply a `smoothstep(outer, inner, cos_angle)` cone falloff. Spot light direction derives from its `TransformComponent` rotation (same convention as `DirectionalLightComponent`). Particle emitters are simulated on the CPU, uploaded to a per-frame host-visible instance buffer, and rendered as additive-blended billboard quads.
+
 ### SceneSerializer
 
 ```cpp
-struct SceneSettings { /* camera, renderer, post-process fields */ };
+struct SceneSettings {
+    // camera: position, yaw, pitch, fov, speed
+    // renderer: shadow_mode, shadow_radius, frustum_culling, taa_enabled, taa_sharpness
+    // post_process: ssao, bloom, tone_map_mode, exposure, clear_color
+    // environment: day_night_cycle, day_length_seconds, time_of_day
+    // advanced: ssr_enabled, volumetric_enabled, volumetric_density,
+    //          gpu_culling, occlusion_culling
+};
 
 class SceneSerializer {
     static bool save(const Scene& scene, const SceneSettings& settings,
@@ -472,7 +598,7 @@ class SceneSerializer {
 };
 ```
 
-JSON format. Clears scene before loading. Saves all entity components + engine settings.
+JSON format. Clears scene before loading. Persists tag, transform, directional/point/spot lights, material, bounds, rigid body components, plus the full `SceneSettings` block covering camera, renderer toggles, post-process, environment (day-night), and advanced culling settings.
 
 ---
 

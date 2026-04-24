@@ -31,6 +31,18 @@ struct SceneSettings {
     int tone_map_mode = 2;
     float exposure = 1.0f;
     float clear_color[3] = {0.02f, 0.02f, 0.02f};
+
+    // environment
+    bool day_night_cycle = false;
+    float day_length_seconds = 120.0f;
+    float time_of_day = 0.25f;
+
+    // advanced renderer toggles
+    bool ssr_enabled = false;
+    bool volumetric_enabled = false;
+    float volumetric_density = 0.015f;
+    bool gpu_culling = false;
+    bool occlusion_culling = false;
 };
 
 class SceneSerializer {

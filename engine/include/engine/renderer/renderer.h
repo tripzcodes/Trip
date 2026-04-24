@@ -76,6 +76,13 @@ public:
         return profiler_->regions();
     }
 
+    // recompile lighting pipeline from its SPV files. caller must ensure no
+    // in-flight frames (this waits on device idle internally).
+    bool reload_lighting_shader();
+
+    const std::string& lighting_vert_path() const;
+    const std::string& lighting_frag_path() const;
+
 private:
     void create_command_resources();
     void create_sync_objects();

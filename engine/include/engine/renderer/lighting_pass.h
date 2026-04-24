@@ -62,6 +62,14 @@ public:
     void bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler,
                          VkSampler shadow_comparison_sampler);
 
+    // recompile pipeline from the stored SPV paths — caller is responsible
+    // for ensuring the device is idle (e.g. vkDeviceWaitIdle). returns false
+    // if the SPV files are missing or cannot be parsed.
+    bool reload_pipeline();
+
+    const std::string& vert_path() const { return vert_path_; }
+    const std::string& frag_path() const { return frag_path_; }
+
 private:
     void create_render_pass();
     void create_framebuffers();

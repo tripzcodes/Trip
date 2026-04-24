@@ -36,6 +36,7 @@ add_library(engine STATIC
     src/core/window.cpp
     src/core/input.cpp
     src/core/camera.cpp
+    src/core/file_watcher.cpp
     src/scene/scene.cpp
     src/world/chunk.cpp
     src/world/terrain.cpp

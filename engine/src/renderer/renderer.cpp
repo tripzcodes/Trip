@@ -467,6 +467,14 @@ VkRenderPass Renderer::lighting_render_pass() const {
     return post_process_->render_pass();
 }
 
+bool Renderer::reload_lighting_shader() {
+    vkDeviceWaitIdle(context_.device());
+    return lighting_->reload_pipeline();
+}
+
+const std::string& Renderer::lighting_vert_path() const { return lighting_->vert_path(); }
+const std::string& Renderer::lighting_frag_path() const { return lighting_->frag_path(); }
+
 glm::vec3 Renderer::compute_scene_min() const {
     glm::vec3 scene_min(std::numeric_limits<float>::max());
     if (!scene_) { return glm::vec3(-50.0f); }

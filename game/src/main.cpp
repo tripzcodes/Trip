@@ -19,6 +19,7 @@
 #include <engine/animation/gltf_loader.h>
 #include <engine/audio/audio.h>
 #include <engine/renderer/text.h>
+#include <engine/core/file_watcher.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -247,6 +248,20 @@ int main() {
             }
         });
 
+        // asset hot-reload — watch lighting shader SPVs and rebuild on change
+        engine::FileWatcher asset_watcher;
+        asset_watcher.watch(renderer.lighting_vert_path(), [&](const std::string& p) {
+            if (renderer.reload_lighting_shader()) {
+                std::cout << "[hot-reload] " << p << "\n";
+            }
+        });
+        asset_watcher.watch(renderer.lighting_frag_path(), [&](const std::string& p) {
+            if (renderer.reload_lighting_shader()) {
+                std::cout << "[hot-reload] " << p << "\n";
+            }
+        });
+        float reload_timer = 0.0f;
+
         // main loop
         auto last_time = std::chrono::high_resolution_clock::now();
 
@@ -257,6 +272,13 @@ int main() {
             auto now = std::chrono::high_resolution_clock::now();
             float dt = std::chrono::duration<float>(now - last_time).count();
             last_time = now;
+
+            // throttle hot-reload checks to avoid stat()ing files every frame
+            reload_timer += dt;
+            if (reload_timer > 0.5f) {
+                reload_timer = 0.0f;
+                asset_watcher.poll();
+            }
 
             if (input.key_held(GLFW_KEY_ESCAPE)) { input.set_cursor_captured(false); }
             if (input.key_held(GLFW_KEY_TAB))    { input.set_cursor_captured(true); }

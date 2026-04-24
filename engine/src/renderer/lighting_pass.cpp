@@ -449,6 +449,33 @@ void LightingPass::update(uint32_t frame, const LightData& data) {
     memcpy(mapped_[frame], &data, sizeof(LightData));
 }
 
+bool LightingPass::reload_pipeline() {
+    auto device = context_.device();
+
+    // quick existence check — poll() can fire before the new SPV is fully written
+    std::ifstream vf(vert_path_, std::ios::binary);
+    std::ifstream ff(frag_path_, std::ios::binary);
+    if (!vf.is_open() || !ff.is_open()) return false;
+
+    VkPipeline old_pipeline = pipeline_;
+    VkPipelineLayout old_layout = pipeline_layout_;
+    pipeline_ = VK_NULL_HANDLE;
+    pipeline_layout_ = VK_NULL_HANDLE;
+
+    try {
+        create_pipeline();
+    } catch (const std::runtime_error&) {
+        // restore old on failure
+        pipeline_ = old_pipeline;
+        pipeline_layout_ = old_layout;
+        return false;
+    }
+
+    if (old_pipeline) vkDestroyPipeline(device, old_pipeline, nullptr);
+    if (old_layout) vkDestroyPipelineLayout(device, old_layout, nullptr);
+    return true;
+}
+
 void LightingPass::bind_shadow_map(VkImageView shadow_view, VkSampler shadow_sampler,
                                    VkSampler shadow_comparison_sampler) {
     for (size_t i = 0; i < sets_.size(); i++) {

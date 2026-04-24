@@ -362,8 +362,13 @@ int main() {
                 }
             }
 
+            std::vector<engine::GpuTimingView> timings;
+            timings.reserve(renderer.gpu_timings().size());
+            for (const auto& r : renderer.gpu_timings()) {
+                timings.push_back({r.name, r.ms});
+            }
             gui.begin_frame(scene, &audio, renderer.draw_calls, renderer.culled_objects,
-                            chunks.loaded_chunks());
+                            chunks.loaded_chunks(), &timings);
 
             // queue in-game text
             auto cam_p = camera.position();

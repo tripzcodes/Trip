@@ -11,6 +11,7 @@
 #include <engine/renderer/shadow_map.h>
 #include <engine/animation/bone_buffer.h>
 #include <engine/renderer/gpu_culling.h>
+#include <engine/renderer/gpu_profiler.h>
 #include <engine/renderer/hiz.h>
 #include <engine/renderer/taa.h>
 #include <engine/renderer/texture.h>
@@ -71,6 +72,10 @@ public:
     uint32_t draw_calls = 0;
     uint32_t culled_objects = 0;
 
+    const std::vector<GpuProfiler::Region>& gpu_timings() const {
+        return profiler_->regions();
+    }
+
 private:
     void create_command_resources();
     void create_sync_objects();
@@ -107,6 +112,7 @@ private:
     std::unique_ptr<GpuCulling> gpu_culling_;
     std::unique_ptr<HiZPyramid> hiz_;
     std::unique_ptr<TAAPass> taa_;
+    std::unique_ptr<GpuProfiler> profiler_;
 
     // material textures
     VkDescriptorSetLayout material_layout_ = VK_NULL_HANDLE;

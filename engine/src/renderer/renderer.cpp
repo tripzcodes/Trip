@@ -203,6 +203,8 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         lighting_->hdr_view(), lighting_->hdr_sampler(),
         gbuffer_->depth_view(), gbuffer_->sampler(), shader_dir);
 
+    profiler_ = std::make_unique<GpuProfiler>(context, MAX_FRAMES_IN_FLIGHT);
+
     create_command_resources();
     create_sync_objects();
 }
@@ -342,6 +344,8 @@ bool Renderer::begin_frame() {
     begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     vkBeginCommandBuffer(cmd, &begin_info);
 
+    profiler_->begin_frame(cmd, current_frame_);
+
     return true;
 }
 
@@ -351,11 +355,17 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
     // save previous VP before geometry_pass overwrites it
     glm::mat4 prev_vp_for_taa = prev_view_proj_unjittered_;
 
+    profiler_->begin_region(cmd, "Shadow");
     shadow_pass(cmd, camera);
+    profiler_->end_region(cmd);
+
+    profiler_->begin_region(cmd, "Geometry");
     geometry_pass(cmd, camera);
+    profiler_->end_region(cmd);
 
     // Hi-Z pyramid generation (after depth is written, before lighting reads it)
     if (occlusion_culling && hiz_) {
+        profiler_->begin_region(cmd, "Hi-Z");
         VkMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
         barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
@@ -367,12 +377,16 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
 
         hiz_->generate(cmd);
         hiz_->readback(cmd, current_frame_);
+        profiler_->end_region(cmd);
     }
 
+    profiler_->begin_region(cmd, "Lighting");
     lighting_pass(cmd, camera);
+    profiler_->end_region(cmd);
 
     // TAA resolve between lighting and post-process
     if (taa_enabled && taa_) {
+        profiler_->begin_region(cmd, "TAA");
         float aspect = static_cast<float>(swapchain_.extent().width) /
                        static_cast<float>(swapchain_.extent().height);
 
@@ -393,11 +407,13 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
         post_process_->bind_hdr_input(current_frame_,
             taa_->resolved_view(), taa_->resolved_sampler(),
             VK_IMAGE_LAYOUT_GENERAL);
+        profiler_->end_region(cmd);
     } else {
         post_process_->bind_hdr_input(current_frame_,
             lighting_->hdr_view(), lighting_->hdr_sampler());
     }
 
+    profiler_->begin_region(cmd, "Post");
     post_process_pass(cmd);
 
     // in-game text (inside the post-process render pass which is still open)
@@ -407,6 +423,7 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
     gui.render(cmd);
 
     vkCmdEndRenderPass(cmd);
+    profiler_->end_region(cmd);
 }
 
 void Renderer::end_frame() {

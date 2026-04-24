@@ -78,7 +78,8 @@ void Gui::create_descriptor_pool() {
 
 void Gui::begin_frame(Scene& scene, Audio* audio,
                       uint32_t draw_calls, uint32_t culled_objects,
-                      uint32_t loaded_chunks) {
+                      uint32_t loaded_chunks,
+                      const std::vector<GpuTimingView>* gpu_timings) {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -90,6 +91,19 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
     ImGui::Begin("Engine");
     ImGui::Text("%.1f FPS", ImGui::GetIO().Framerate);
     ImGui::Text("Draw calls: %u  Culled: %u  Chunks: %u", draw_calls, culled_objects, loaded_chunks);
+
+    if (gpu_timings && !gpu_timings->empty()) {
+        if (ImGui::CollapsingHeader("GPU Timings (ms)", ImGuiTreeNodeFlags_DefaultOpen)) {
+            double total = 0.0;
+            for (const auto& t : *gpu_timings) {
+                ImGui::Text("%-10s %.3f", t.name.c_str(), t.ms);
+                total += t.ms;
+            }
+            ImGui::Separator();
+            ImGui::Text("%-10s %.3f", "Total", total);
+        }
+    }
+
     ImGui::Separator();
     ImGui::Checkbox("Wireframe", &state_.wireframe);
     ImGui::Checkbox("Frustum Culling", &state_.frustum_culling);

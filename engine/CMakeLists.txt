@@ -28,6 +28,7 @@ add_library(engine STATIC
     src/renderer/shadow_map.cpp
     src/renderer/taa.cpp
     src/renderer/gpu_culling.cpp
+    src/renderer/gpu_profiler.cpp
     src/scene/serializer.cpp
     src/renderer/vma_impl.cpp
     src/renderer/stb_truetype_impl.cpp

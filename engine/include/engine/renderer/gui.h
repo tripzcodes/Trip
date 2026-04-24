@@ -2,9 +2,17 @@
 
 #include <vulkan/vulkan.h>
 
+#include <string>
+#include <vector>
+
 struct GLFWwindow;
 
 namespace engine {
+
+struct GpuTimingView {
+    std::string name;
+    double ms = 0.0;
+};
 
 class Audio;
 class VulkanContext;
@@ -56,7 +64,8 @@ public:
 
     void begin_frame(Scene& scene, Audio* audio = nullptr,
                      uint32_t draw_calls = 0, uint32_t culled_objects = 0,
-                     uint32_t loaded_chunks = 0);
+                     uint32_t loaded_chunks = 0,
+                     const std::vector<GpuTimingView>* gpu_timings = nullptr);
     void render(VkCommandBuffer cmd);
 
     GuiState& state() { return state_; }

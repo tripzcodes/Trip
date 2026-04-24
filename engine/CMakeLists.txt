@@ -29,6 +29,7 @@ add_library(engine STATIC
     src/renderer/taa.cpp
     src/renderer/gpu_culling.cpp
     src/renderer/gpu_profiler.cpp
+    src/renderer/particle_pass.cpp
     src/scene/serializer.cpp
     src/renderer/vma_impl.cpp
     src/renderer/stb_truetype_impl.cpp

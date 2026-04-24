@@ -13,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <limits>
@@ -205,6 +206,10 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         gbuffer_->depth_view(), gbuffer_->sampler(), shader_dir);
 
     profiler_ = std::make_unique<GpuProfiler>(context, MAX_FRAMES_IN_FLIGHT);
+
+    particles_ = std::make_unique<ParticlePass>(context, allocator,
+        post_process_->render_pass(), swapchain.extent(),
+        shader_dir, MAX_FRAMES_IN_FLIGHT);
 
     create_command_resources();
     create_sync_objects();
@@ -416,6 +421,17 @@ void Renderer::render(const Camera& camera, Gui& gui, TextRenderer* text) {
 
     profiler_->begin_region(cmd, "Post");
     post_process_pass(cmd);
+
+    // particles draw additively on top of the tonemapped output inside the same pass
+    auto now = std::chrono::steady_clock::now();
+    float dt = 0.0f;
+    if (has_last_frame_time_) {
+        dt = std::chrono::duration<float>(now - last_frame_time_).count();
+        if (dt > 0.1f) dt = 0.1f; // clamp after pause/breakpoint
+    }
+    last_frame_time_ = now;
+    has_last_frame_time_ = true;
+    simulate_and_draw_particles(cmd, camera, dt);
 
     // in-game text (inside the post-process render pass which is still open)
     if (text) text->render(cmd);
@@ -1078,6 +1094,87 @@ void Renderer::post_process_pass(VkCommandBuffer cmd) {
     vkCmdDraw(cmd, 3, 1, 0, 0);
 
     // NOTE: render pass left open for ImGui — closed after gui.render() in render()
+}
+
+void Renderer::simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& camera, float dt) {
+    if (!scene_ || !particles_) return;
+
+    auto ev = scene_->view<ParticleEmitterComponent, TransformComponent>();
+    if (ev.size_hint() == 0) return;
+
+    // gather particles from all emitters into a single instance buffer
+    std::vector<ParticleInstance> gpu_particles;
+
+    // cheap LCG per-emitter (don't touch global rand)
+    auto next_u = [](uint32_t& s) {
+        s = s * 1664525u + 1013904223u;
+        return (s >> 8) * (1.0f / 16777216.0f); // [0,1)
+    };
+
+    for (auto e : ev) {
+        auto& em = ev.get<ParticleEmitterComponent>(e);
+        auto& tr = ev.get<TransformComponent>(e);
+        glm::vec3 origin = tr.position;
+
+        // simulate existing particles
+        for (auto& p : em.particles) {
+            if (p.life <= 0.0f) continue;
+            p.life -= dt;
+            p.velocity += em.gravity * dt;
+            p.position += p.velocity * dt;
+        }
+        // compact (move dead to back) — cheap erase_if
+        em.particles.erase(
+            std::remove_if(em.particles.begin(), em.particles.end(),
+                           [](const Particle& p) { return p.life <= 0.0f; }),
+            em.particles.end());
+
+        // emit new particles
+        if (em.emitting) {
+            em.accumulator += em.rate * dt;
+            while (em.accumulator >= 1.0f && em.particles.size() < em.max_particles) {
+                em.accumulator -= 1.0f;
+                Particle p{};
+                p.position = origin;
+                auto jx = (next_u(em.rng_state) - 0.5f) * 2.0f;
+                auto jy = (next_u(em.rng_state) - 0.5f) * 2.0f;
+                auto jz = (next_u(em.rng_state) - 0.5f) * 2.0f;
+                p.velocity = em.velocity +
+                             glm::vec3(jx, jy, jz) * em.velocity_jitter;
+                p.life = em.lifetime;
+                p.max_life = em.lifetime;
+                em.particles.push_back(p);
+            }
+        }
+
+        // upload live particles
+        for (const auto& p : em.particles) {
+            float t = 1.0f - (p.life / p.max_life); // 0=birth, 1=death
+            float size = glm::mix(em.start_size, em.end_size, t);
+            glm::vec4 color = glm::mix(em.start_color, em.end_color, t);
+            ParticleInstance gi{};
+            gi.pos_size = glm::vec4(p.position, size);
+            gi.color = color;
+            gpu_particles.push_back(gi);
+        }
+    }
+
+    if (gpu_particles.empty()) return;
+
+    float aspect = static_cast<float>(swapchain_.extent().width) /
+                   static_cast<float>(swapchain_.extent().height);
+    glm::mat4 view = camera.view_matrix();
+    glm::mat4 proj = camera.projection_matrix(aspect);
+
+    // camera-aligned billboard basis in world space
+    glm::mat4 inv_view = glm::inverse(view);
+    glm::vec3 cam_right = glm::normalize(glm::vec3(inv_view[0]));
+    glm::vec3 cam_up = glm::normalize(glm::vec3(inv_view[1]));
+
+    particles_->draw(cmd, current_frame_,
+                     gpu_particles.data(),
+                     static_cast<uint32_t>(gpu_particles.size()),
+                     proj * view, cam_right, cam_up);
 }
 
 } // namespace engine

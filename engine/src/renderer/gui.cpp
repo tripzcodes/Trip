@@ -245,6 +245,24 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            // particle emitter
+            if (registry.all_of<ParticleEmitterComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Particle Emitter", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& em = registry.get<ParticleEmitterComponent>(entity);
+                    ImGui::Checkbox("Emitting", &em.emitting);
+                    ImGui::SliderFloat("Rate", &em.rate, 0.0f, 500.0f);
+                    ImGui::SliderFloat("Lifetime", &em.lifetime, 0.1f, 10.0f);
+                    ImGui::DragFloat3("Init Velocity", &em.velocity.x, 0.1f);
+                    ImGui::DragFloat3("Vel Jitter", &em.velocity_jitter.x, 0.05f, 0.0f, 10.0f);
+                    ImGui::DragFloat3("Gravity", &em.gravity.x, 0.1f);
+                    ImGui::ColorEdit4("Start Color", &em.start_color.x);
+                    ImGui::ColorEdit4("End Color", &em.end_color.x);
+                    ImGui::SliderFloat("Start Size", &em.start_size, 0.0f, 2.0f);
+                    ImGui::SliderFloat("End Size", &em.end_size, 0.0f, 2.0f);
+                    ImGui::Text("Live: %zu", em.particles.size());
+                }
+            }
+
             // spot light
             if (registry.all_of<SpotLightComponent>(entity)) {
                 if (ImGui::CollapsingHeader("Spot Light", ImGuiTreeNodeFlags_DefaultOpen)) {

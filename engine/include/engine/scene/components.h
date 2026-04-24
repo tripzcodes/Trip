@@ -137,6 +137,33 @@ struct DirectionalLightComponent {
     }
 };
 
+struct Particle {
+    glm::vec3 position{0.0f};
+    float size = 0.2f;
+    glm::vec4 color{1.0f};
+    glm::vec3 velocity{0.0f};
+    float life = 0.0f;     // seconds remaining
+    float max_life = 1.0f;
+};
+
+struct ParticleEmitterComponent {
+    float rate = 30.0f;                       // particles per second
+    float lifetime = 2.0f;
+    glm::vec3 velocity{0.0f, 4.0f, 0.0f};     // initial velocity
+    glm::vec3 velocity_jitter{1.5f, 0.5f, 1.5f};
+    glm::vec3 gravity{0.0f, -3.0f, 0.0f};
+    glm::vec4 start_color{1.0f, 0.55f, 0.15f, 1.0f};
+    glm::vec4 end_color{0.5f, 0.1f, 0.0f, 0.0f};
+    float start_size = 0.25f;
+    float end_size = 0.0f;
+    uint32_t max_particles = 256;
+    bool emitting = true;
+
+    float accumulator = 0.0f;
+    uint32_t rng_state = 0x9e3779b9u;
+    std::vector<Particle> particles;
+};
+
 struct SkinnedMeshComponent {
     std::shared_ptr<SkinnedMesh> mesh;
     std::shared_ptr<Skeleton> skeleton;

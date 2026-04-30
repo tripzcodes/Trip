@@ -18,10 +18,26 @@ void Input::update() {
     dy_ = static_cast<float>(my - last_y_);
     last_x_ = mx;
     last_y_ = my;
+
+    prev_keys_ = curr_keys_;
+    for (int k = GLFW_KEY_SPACE; k <= GLFW_KEY_LAST; k++) {
+        curr_keys_[k] = (glfwGetKey(window_, k) == GLFW_PRESS) ? 1 : 0;
+    }
 }
 
 bool Input::key_held(int key) const {
-    return glfwGetKey(window_, key) == GLFW_PRESS;
+    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    return curr_keys_[key] != 0;
+}
+
+bool Input::key_pressed(int key) const {
+    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    return curr_keys_[key] != 0 && prev_keys_[key] == 0;
+}
+
+bool Input::key_released(int key) const {
+    if (key < 0 || key > GLFW_KEY_LAST) return false;
+    return curr_keys_[key] == 0 && prev_keys_[key] != 0;
 }
 
 void Input::set_cursor_captured(bool captured) {

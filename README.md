@@ -82,6 +82,8 @@ per-entity inspectors without engine code referencing game types.
 
 `Triggers + Health` · data-driven trigger volumes (Damage / Heal / Destroy actions) fire on every entity that enters their AABB; `HealthComponent` decremented to 0 → entity destroyed. No scripting required — small components + a single `update_triggers(scene)` system
 
+`Game state machine` · stack of `GameState`s with `enter / update / exit / render_imgui` hooks; `world_paused()` gates simulation while the renderer keeps drawing the frozen scene. Ships with Menu / Playing / Paused states
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle
@@ -155,7 +157,10 @@ cmake --build build
 | `Mouse` | Look |
 | `Tab` | Capture cursor |
 | `Esc` | Release cursor |
-| `N` | Spawn an NPC at the camera |
+| `N` | Spawn an NPC at the camera (Playing state) |
+| `Enter` | Start game from Menu |
+| `P` | Pause / resume |
+| `M` | Return to Menu (from Paused) |
 
 ---
 

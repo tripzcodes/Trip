@@ -23,6 +23,7 @@
 #include <engine/world/navmesh.h>
 #include <game/components.h>
 #include <game/triggers.h>
+#include <game/state.h>
 
 #include <imgui.h>
 
@@ -380,6 +381,11 @@ int main() {
             scene.add<game::TriggerComponent>(t, tc);
         }
 
+        // game state machine — opens on the menu, world stays frozen until Enter
+        game::GameContext gctx{ scene, input, camera, navmesh, navmesh_baked };
+        game::StateMachine state_machine;
+        state_machine.push(gctx, game::make_menu_state());
+
         // main loop
         auto last_time = std::chrono::high_resolution_clock::now();
 
@@ -404,6 +410,10 @@ int main() {
             camera.move_speed = gui.state().camera_speed;
             camera.update(input, dt);
 
+            // advance the game state stack first; it may pause the world
+            state_machine.update(gctx, dt);
+            bool world_paused = state_machine.world_paused();
+
             // bake navmesh once chunks have populated, then advance agents
             if (!navmesh_baked) {
                 nav_bake_timer -= dt;
@@ -411,17 +421,15 @@ int main() {
                     navmesh.bake_from_scene(scene, 1.0f);
                     navmesh_baked = true;
                 }
-            } else {
+            } else if (!world_paused) {
                 engine::update_agents(scene, navmesh, dt);
                 game::update_triggers(scene);
             }
             if (gui.state().rebake_navmesh) {
                 navmesh.bake_from_scene(scene, 1.0f);
             }
-            // press N to spawn an NPC at the camera (edge-triggered)
-            static bool prev_n = false;
-            bool n_now = input.key_held(GLFW_KEY_N);
-            if (n_now && !prev_n) {
+            // press N to spawn an NPC at the camera
+            if (!world_paused && input.key_pressed(GLFW_KEY_N)) {
                 auto npc = scene.create("NPC");
                 auto& tr = scene.get<engine::TransformComponent>(npc);
                 tr.position = camera.position() + camera.front() * 3.0f;
@@ -434,10 +442,9 @@ int main() {
                 scene.add<engine::AgentComponent>(npc);
                 scene.add<game::HealthComponent>(npc);
             }
-            prev_n = n_now;
 
             // day-night cycle: advance time, drive sun pitch/yaw + intensity
-            if (gui.state().day_night_cycle) {
+            if (gui.state().day_night_cycle && !world_paused) {
                 gui.state().time_of_day += dt / std::max(gui.state().day_length_seconds, 1.0f);
                 gui.state().time_of_day = std::fmod(gui.state().time_of_day, 1.0f);
             }
@@ -564,6 +571,9 @@ int main() {
             glm::vec3 spawn_pos = camera.position() + camera.front() * 3.0f;
             gui.begin_frame(scene, &audio, renderer.draw_calls, renderer.culled_objects,
                             chunks.loaded_chunks(), &timings, spawn_pos);
+
+            // game state overlays (menu, pause, ...)
+            state_machine.render_imgui(gctx);
 
             // queue in-game text
             auto cam_p = camera.position();

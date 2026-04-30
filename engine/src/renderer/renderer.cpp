@@ -273,6 +273,17 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
         water_pipeline_ = std::make_unique<Pipeline>(context.device(), wcfg);
     }
 
+    // vegetation pipeline: same vertex layout + descriptors as the standard
+    // geometry pipeline, but its vertex shader applies wind displacement and
+    // the push constant block is 16 bytes longer.
+    {
+        PipelineConfig vcfg = geom_config;
+        vcfg.vert_path = shader_dir + "/gbuffer_vegetation.vert.spv";
+        // mat4 model + 3 * vec4 = 112 bytes
+        vcfg.push_constant_size = sizeof(glm::mat4) + sizeof(glm::vec4) * 3;
+        vegetation_pipeline_ = std::make_unique<Pipeline>(context.device(), vcfg);
+    }
+
     create_command_resources();
     create_sync_objects();
 }
@@ -834,6 +845,8 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
 
         auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
         for (auto entity : renderable_view) {
+            // vegetation entities are drawn by the dedicated wind pipeline
+            if (scene_->registry().all_of<VegetationComponent>(entity)) continue;
             auto& mesh_comp = renderable_view.get<MeshComponent>(entity);
             glm::mat4 world = scene_->world_transform(entity);
 
@@ -963,6 +976,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             }
         }
 
+        draw_vegetation(cmd);
         draw_water(cmd);
         vkCmdEndRenderPass(cmd);
 
@@ -983,6 +997,8 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
 
         auto renderable_view = scene_->view<TransformComponent, MeshComponent>();
         for (auto entity : renderable_view) {
+            // vegetation entities are drawn by the dedicated wind pipeline
+            if (scene_->registry().all_of<VegetationComponent>(entity)) continue;
             auto& mesh_comp = renderable_view.get<MeshComponent>(entity);
             glm::mat4 world = scene_->world_transform(entity);
 
@@ -1094,6 +1110,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             }
         }
 
+        draw_vegetation(cmd);
         draw_water(cmd);
         vkCmdEndRenderPass(cmd);
     }
@@ -1247,6 +1264,64 @@ void Renderer::simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& ca
                      gpu_particles.data(),
                      static_cast<uint32_t>(gpu_particles.size()),
                      proj * view, cam_right, cam_up);
+}
+
+void Renderer::draw_vegetation(VkCommandBuffer cmd) {
+    if (!scene_ || !vegetation_pipeline_) return;
+
+    auto vv = scene_->view<VegetationComponent, MeshComponent, TransformComponent>();
+    if (vv.size_hint() == 0) return;
+
+    float t = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - start_time_).count();
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vegetation_pipeline_->handle());
+
+    VkDescriptorSet ds = descriptors_->set(current_frame_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, vegetation_pipeline_->layout(),
+                            0, 1, &ds, 0, nullptr);
+
+    VkDescriptorSet default_mat = default_texture_->descriptor_set();
+
+    struct Push {
+        glm::mat4 model;
+        glm::vec4 albedo;
+        glm::vec4 material;
+        glm::vec4 wind;
+    } push{};
+
+    for (auto e : vv) {
+        auto& vc = vv.get<VegetationComponent>(e);
+        auto& mc = vv.get<MeshComponent>(e);
+        if (!mc.mesh) continue;
+        glm::mat4 world = scene_->world_transform(e);
+
+        push.model = world;
+        push.albedo = glm::vec4(1.0f);
+        push.material = glm::vec4(0.0f, 0.7f, 0.0f, 0.0f);
+
+        VkDescriptorSet mat_set = default_mat;
+        if (scene_->registry().all_of<MaterialComponent>(e)) {
+            auto& m = scene_->registry().get<MaterialComponent>(e);
+            push.albedo = glm::vec4(m.albedo, 1.0f);
+            push.material = glm::vec4(m.metallic, m.roughness, 0.0f, 0.0f);
+            if (m.texture_set != VK_NULL_HANDLE) mat_set = m.texture_set;
+        }
+
+        push.wind = glm::vec4(vc.wind_amplitude, vc.height_min,
+                              vc.height_max, t * vc.wind_speed);
+
+        vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
+                                vegetation_pipeline_->layout(), 1, 1, &mat_set, 0, nullptr);
+
+        vkCmdPushConstants(cmd, vegetation_pipeline_->layout(),
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, sizeof(push), &push);
+
+        mc.mesh->bind(cmd);
+        mc.mesh->draw(cmd);
+        draw_calls++;
+    }
 }
 
 void Renderer::draw_water(VkCommandBuffer cmd) {

@@ -101,6 +101,7 @@ private:
     void simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& camera, float dt);
     void decal_pass(VkCommandBuffer cmd, const Camera& camera);
     void draw_water(VkCommandBuffer cmd);
+    void draw_vegetation(VkCommandBuffer cmd);
     glm::vec3 compute_scene_min() const;
     glm::vec3 compute_scene_max() const;
 
@@ -137,6 +138,10 @@ private:
     // water: shared procedural plane mesh + dedicated G-Buffer pipeline
     std::unique_ptr<Mesh> water_mesh_;
     std::unique_ptr<Pipeline> water_pipeline_;
+
+    // vegetation: gbuffer pipeline variant with wind vertex displacement
+    std::unique_ptr<Pipeline> vegetation_pipeline_;
+
     std::chrono::steady_clock::time_point start_time_{std::chrono::steady_clock::now()};
 
     // material textures

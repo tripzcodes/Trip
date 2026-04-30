@@ -254,6 +254,17 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            // vegetation
+            if (registry.all_of<VegetationComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Vegetation", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& v = registry.get<VegetationComponent>(entity);
+                    ImGui::SliderFloat("Wind Amp", &v.wind_amplitude, 0.0f, 1.0f);
+                    ImGui::SliderFloat("Wind Speed", &v.wind_speed, 0.0f, 4.0f);
+                    ImGui::SliderFloat("Height Min", &v.height_min, -2.0f, 2.0f);
+                    ImGui::SliderFloat("Height Max", &v.height_max, -2.0f, 4.0f);
+                }
+            }
+
             // water
             if (registry.all_of<WaterPlaneComponent>(entity)) {
                 if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen)) {

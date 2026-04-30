@@ -66,6 +66,8 @@ shaders/          glsl → spir-v
 
 `Water` · Gerstner-wave vertex displacement on a procedural grid, written into the G-Buffer as a high-metallic / low-roughness surface so PBR + SSR carry sky and scene reflections automatically
 
+`Vegetation + wind` · gbuffer pipeline variant with world-space sin/cos wind displacement, height-mask gates the bend so only tops sway
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle

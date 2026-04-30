@@ -45,5 +45,6 @@ compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.frag)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/water.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/water.frag)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/gbuffer_vegetation.vert)
 
 add_custom_target(shaders ALL DEPENDS ${SPV_FILES})

@@ -137,6 +137,17 @@ struct DirectionalLightComponent {
     }
 };
 
+// Tag for entities that should be rendered with the wind-displacement vertex
+// shader. The mesh is shaded by the same gbuffer.frag, so the entity should
+// also have a MeshComponent (and optionally MaterialComponent).
+struct VegetationComponent {
+    float wind_amplitude = 0.15f;
+    float wind_speed = 1.0f;
+    // local-space height (along mesh +Y) where bending starts and reaches its peak
+    float height_min = 0.0f;
+    float height_max = 1.5f;
+};
+
 struct WaterPlaneComponent {
     glm::vec3 color{0.05f, 0.18f, 0.30f};
     // wave_a / wave_b each pack: amplitude, frequency (wavelength reciprocal),

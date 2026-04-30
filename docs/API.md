@@ -203,6 +203,8 @@ class DecalPass {
 };
 ```
 
+Vegetation entities are any entity with `VegetationComponent` + a `MeshComponent`. They are skipped by the standard geometry-pass loop and drawn instead by a dedicated pipeline whose vertex shader (`gbuffer_vegetation.vert`) applies `sin/cos` wind displacement in world space, gated by a smooth height mask so only the tops bend. Use it on grass blades, leafy props, or any prop you want to sway in the wind. The pipeline shares descriptors and the fragment shader with the standard G-Buffer pipeline, so existing materials, normal mapping, and shadows all keep working.
+
 Water surfaces are entities with `WaterPlaneComponent` (and a `TransformComponent` for position + scale — XZ scale sets plane extents). The renderer owns a shared 64×64 grid mesh and a dedicated G-Buffer pipeline; the vertex shader applies two summed Gerstner waves and computes an analytical normal, the fragment shader writes albedo (water tint), normal, and position with `metallic = 1` / `roughness = 0.05`. The standard PBR + SSR + volumetrics path then handles reflections, sun specular, and scattering with no extra plumbing.
 
 Deferred box decals. Between geometry and lighting, renders a unit cube per decal; the fragment shader samples `gbuf_position`, transforms world space into decal-local via `inv_world`, discards outside `[-0.5, 0.5]^3`, samples the decal texture projected down the local -Y axis, and alpha-blends the result back into the albedo attachment. Front-face culling keeps the draw alive when the camera sits inside the decal volume. Use `Renderer::allocate_decal_set(texture)` to obtain a `texture_set` for a `DecalComponent`.
@@ -566,6 +568,13 @@ struct SpotLightComponent {
     float inner_cone_deg = 15.0f;
     float outer_cone_deg = 25.0f;
     static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees);
+};
+
+struct VegetationComponent {
+    float wind_amplitude = 0.15f;
+    float wind_speed = 1.0f;
+    float height_min = 0.0f;
+    float height_max = 1.5f;
 };
 
 struct WaterPlaneComponent {

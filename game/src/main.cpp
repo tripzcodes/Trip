@@ -191,6 +191,25 @@ int main() {
         auto cube_mesh = cube_model.mesh;
         auto cube_tex = cube_model.tex_set;
 
+        // a wind-bent test prop (reusing the cube; bends because the top of the cube
+        // sits in the wind mask range)
+        {
+            auto v = scene.create("WindCube");
+            auto& tr = scene.get<engine::TransformComponent>(v);
+            tr.position = { -8.0f, 1.0f, -8.0f };
+            tr.scale = { 1.0f, 2.5f, 1.0f };
+            scene.add<engine::MeshComponent>(v, engine::MeshComponent{cube_mesh});
+            auto& m = scene.add<engine::MaterialComponent>(v);
+            m.albedo = glm::vec3(0.3f, 0.7f, 0.25f);
+            m.roughness = 0.85f;
+            m.texture_set = cube_tex;
+            engine::VegetationComponent vc{};
+            vc.wind_amplitude = 0.4f;
+            vc.height_min = 0.0f;
+            vc.height_max = 1.0f;
+            scene.add<engine::VegetationComponent>(v, vc);
+        }
+
         // water plane far from spawn (offset so it's visible but not on top of player)
         {
             auto w = scene.create("Water");

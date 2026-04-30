@@ -52,6 +52,16 @@ static json serialize_entity(const entt::registry& reg, entt::entity entity) {
         };
     }
 
+    if (reg.all_of<VegetationComponent>(entity)) {
+        auto& v = reg.get<VegetationComponent>(entity);
+        j["vegetation"] = {
+            {"wind_amplitude", v.wind_amplitude},
+            {"wind_speed", v.wind_speed},
+            {"height_min", v.height_min},
+            {"height_max", v.height_max}
+        };
+    }
+
     if (reg.all_of<WaterPlaneComponent>(entity)) {
         auto& w = reg.get<WaterPlaneComponent>(entity);
         j["water_plane"] = {
@@ -138,6 +148,15 @@ static void deserialize_entity(Scene& scene, const json& j) {
         l.color = json_to_vec3(jl["color"]);
         l.intensity = jl["intensity"];
         l.range = jl["range"];
+    }
+
+    if (j.contains("vegetation")) {
+        auto& jv = j["vegetation"];
+        auto& v = scene.add<VegetationComponent>(entity);
+        v.wind_amplitude = jv["wind_amplitude"];
+        v.wind_speed = jv["wind_speed"];
+        v.height_min = jv["height_min"];
+        v.height_max = jv["height_max"];
     }
 
     if (j.contains("water_plane")) {

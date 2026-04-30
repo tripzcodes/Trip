@@ -26,6 +26,14 @@ struct RigidBodyComponent {
     glm::vec3 last_synced_pos{0.0f}; // for detecting external teleports
 };
 
+struct RaycastHit {
+    bool hit = false;
+    entt::entity entity = entt::null;
+    glm::vec3 point{0.0f};
+    glm::vec3 normal{0.0f};
+    float distance = 0.0f;
+};
+
 class PhysicsWorld {
 public:
     PhysicsWorld();
@@ -42,6 +50,11 @@ public:
 
     // write physics transforms back to ECS
     void sync_to_scene(Scene& scene);
+
+    // closest-hit raycast against all rigid bodies. `direction` does not need to be
+    // normalized; only its sign matters (length is taken from `max_distance`).
+    RaycastHit raycast(const glm::vec3& origin, const glm::vec3& direction,
+                       float max_distance) const;
 
     glm::vec3 gravity{0.0f, -9.81f, 0.0f};
 

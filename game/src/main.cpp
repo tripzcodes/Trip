@@ -366,6 +366,11 @@ int main() {
             m.texture_set = cube_tex;
             s.add<engine::AgentComponent>(e);
             s.add<game::HealthComponent>(e);
+            engine::RigidBodyComponent rb{};
+            rb.type = engine::RigidBodyComponent::Type::Kinematic;
+            rb.shape = engine::RigidBodyComponent::Shape::Box;
+            rb.half_extents = { 0.5f, 1.0f, 0.5f };
+            s.add<engine::RigidBodyComponent>(e, rb);
             return e;
         });
         prefabs.add("DamageZone", [](engine::Scene& s, const glm::vec3& p) {
@@ -398,6 +403,7 @@ int main() {
         actions.bind("spawn_npc",   GLFW_KEY_N);
         actions.bind("rebake_nav",  GLFW_KEY_B);
         actions.bind("ping",        GLFW_KEY_F);
+        actions.bind("shoot",       GLFW_KEY_X);
 
         // game state machine — opens on the menu, world stays frozen until Enter
         game::GameContext gctx{ scene, input, actions, camera, navmesh, navmesh_baked };
@@ -449,6 +455,19 @@ int main() {
             // spawn NPC at the camera via the prefab registry
             if (!world_paused && actions.pressed(input, "spawn_npc")) {
                 prefabs.spawn("NPC", scene, camera.position() + camera.front() * 3.0f);
+            }
+
+            // shoot: raycast from the camera, deal 30 damage to whatever's hit
+            if (!world_paused && actions.pressed(input, "shoot")) {
+                auto hit = physics.raycast(camera.position(), camera.front(), 100.0f);
+                if (hit.hit && scene.registry().valid(hit.entity)
+                    && scene.registry().all_of<game::HealthComponent>(hit.entity)) {
+                    auto& h = scene.get<game::HealthComponent>(hit.entity);
+                    h.current -= 30.0f;
+                    std::cout << "[shoot] hit entity at "
+                              << hit.point.x << "," << hit.point.y << "," << hit.point.z
+                              << "  dist=" << hit.distance << "\n";
+                }
             }
 
             // day-night cycle: advance time, drive sun pitch/yaw + intensity

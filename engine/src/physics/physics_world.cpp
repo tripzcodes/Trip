@@ -10,6 +10,9 @@
 #include <Jolt/Physics/Body/BodyActivationListener.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Collision/RayCast.h>
+#include <Jolt/Physics/Collision/CastResult.h>
+#include <Jolt/Physics/Body/BodyLockInterface.h>
 
 #include <engine/physics/physics_world.h>
 #include <engine/scene/scene.h>
@@ -178,6 +181,39 @@ void PhysicsWorld::update(float dt) {
     const int steps = 1;
     impl_->physics_system->Update(dt, steps,
         impl_->temp_allocator.get(), impl_->job_system.get());
+}
+
+RaycastHit PhysicsWorld::raycast(const glm::vec3& origin, const glm::vec3& direction,
+                                 float max_distance) const {
+    RaycastHit out{};
+    if (max_distance <= 0.0f) return out;
+
+    glm::vec3 dir_norm = glm::normalize(direction);
+    glm::vec3 ray_vec = dir_norm * max_distance;
+
+    JPH::RRayCast ray{
+        JPH::Vec3(origin.x, origin.y, origin.z),
+        JPH::Vec3(ray_vec.x, ray_vec.y, ray_vec.z),
+    };
+    JPH::RayCastResult result;
+    bool hit = impl_->physics_system->GetNarrowPhaseQuery().CastRay(ray, result);
+    if (!hit) return out;
+
+    out.hit = true;
+    out.distance = result.mFraction * max_distance;
+    out.point = origin + dir_norm * out.distance;
+
+    auto it = impl_->body_to_entity.find(result.mBodyID.GetIndexAndSequenceNumber());
+    if (it != impl_->body_to_entity.end()) out.entity = it->second;
+
+    JPH::BodyLockRead lock(impl_->physics_system->GetBodyLockInterface(), result.mBodyID);
+    if (lock.Succeeded()) {
+        JPH::Vec3 n = lock.GetBody().GetWorldSpaceSurfaceNormal(
+            result.mSubShapeID2,
+            JPH::Vec3(out.point.x, out.point.y, out.point.z));
+        out.normal = { n.GetX(), n.GetY(), n.GetZ() };
+    }
+    return out;
 }
 
 void PhysicsWorld::sync_to_scene(Scene& scene) {

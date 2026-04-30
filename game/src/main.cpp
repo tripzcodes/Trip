@@ -191,6 +191,15 @@ int main() {
         auto cube_mesh = cube_model.mesh;
         auto cube_tex = cube_model.tex_set;
 
+        // water plane far from spawn (offset so it's visible but not on top of player)
+        {
+            auto w = scene.create("Water");
+            auto& tr = scene.get<engine::TransformComponent>(w);
+            tr.position = { 30.0f, 1.0f, 30.0f };
+            tr.scale = { 60.0f, 1.0f, 60.0f };
+            scene.add<engine::WaterPlaneComponent>(w);
+        }
+
         // test decal: a checker texture projected down onto the terrain near the origin
         auto decal_tex = std::make_shared<engine::Texture>(
             context, allocator, assets_dir + "/models/checker.png");

@@ -52,6 +52,21 @@ static json serialize_entity(const entt::registry& reg, entt::entity entity) {
         };
     }
 
+    if (reg.all_of<WaterPlaneComponent>(entity)) {
+        auto& w = reg.get<WaterPlaneComponent>(entity);
+        j["water_plane"] = {
+            {"color", vec3_to_json(w.color)},
+            {"amp_a", w.amp_a},
+            {"wavelength_a", w.wavelength_a},
+            {"speed_a", w.speed_a},
+            {"dir_ax", w.dir_ax},
+            {"amp_b", w.amp_b},
+            {"wavelength_b", w.wavelength_b},
+            {"speed_b", w.speed_b},
+            {"dir_bz", w.dir_bz}
+        };
+    }
+
     if (reg.all_of<SpotLightComponent>(entity)) {
         auto& l = reg.get<SpotLightComponent>(entity);
         j["spot_light"] = {
@@ -123,6 +138,20 @@ static void deserialize_entity(Scene& scene, const json& j) {
         l.color = json_to_vec3(jl["color"]);
         l.intensity = jl["intensity"];
         l.range = jl["range"];
+    }
+
+    if (j.contains("water_plane")) {
+        auto& jw = j["water_plane"];
+        auto& w = scene.add<WaterPlaneComponent>(entity);
+        w.color = json_to_vec3(jw["color"]);
+        w.amp_a = jw["amp_a"];
+        w.wavelength_a = jw["wavelength_a"];
+        w.speed_a = jw["speed_a"];
+        w.dir_ax = jw["dir_ax"];
+        w.amp_b = jw["amp_b"];
+        w.wavelength_b = jw["wavelength_b"];
+        w.speed_b = jw["speed_b"];
+        w.dir_bz = jw["dir_bz"];
     }
 
     if (j.contains("spot_light")) {

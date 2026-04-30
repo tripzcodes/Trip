@@ -4,6 +4,7 @@
 #include <engine/renderer/descriptors.h>
 #include <engine/renderer/gbuffer.h>
 #include <engine/renderer/lighting_pass.h>
+#include <engine/renderer/mesh.h>
 #include <engine/renderer/pipeline.h>
 #include <engine/renderer/post_process.h>
 #include <engine/renderer/frustum.h>
@@ -99,6 +100,7 @@ private:
     void post_process_pass(VkCommandBuffer cmd);
     void simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& camera, float dt);
     void decal_pass(VkCommandBuffer cmd, const Camera& camera);
+    void draw_water(VkCommandBuffer cmd);
     glm::vec3 compute_scene_min() const;
     glm::vec3 compute_scene_max() const;
 
@@ -131,6 +133,11 @@ private:
     std::unique_ptr<GpuProfiler> profiler_;
     std::unique_ptr<ParticlePass> particles_;
     std::unique_ptr<DecalPass> decals_;
+
+    // water: shared procedural plane mesh + dedicated G-Buffer pipeline
+    std::unique_ptr<Mesh> water_mesh_;
+    std::unique_ptr<Pipeline> water_pipeline_;
+    std::chrono::steady_clock::time_point start_time_{std::chrono::steady_clock::now()};
 
     // material textures
     VkDescriptorSetLayout material_layout_ = VK_NULL_HANDLE;

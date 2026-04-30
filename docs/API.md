@@ -203,6 +203,8 @@ class DecalPass {
 };
 ```
 
+Water surfaces are entities with `WaterPlaneComponent` (and a `TransformComponent` for position + scale — XZ scale sets plane extents). The renderer owns a shared 64×64 grid mesh and a dedicated G-Buffer pipeline; the vertex shader applies two summed Gerstner waves and computes an analytical normal, the fragment shader writes albedo (water tint), normal, and position with `metallic = 1` / `roughness = 0.05`. The standard PBR + SSR + volumetrics path then handles reflections, sun specular, and scattering with no extra plumbing.
+
 Deferred box decals. Between geometry and lighting, renders a unit cube per decal; the fragment shader samples `gbuf_position`, transforms world space into decal-local via `inv_world`, discards outside `[-0.5, 0.5]^3`, samples the decal texture projected down the local -Y axis, and alpha-blends the result back into the albedo attachment. Front-face culling keeps the draw alive when the camera sits inside the decal volume. Use `Renderer::allocate_decal_set(texture)` to obtain a `texture_set` for a `DecalComponent`.
 
 ### Mesh
@@ -564,6 +566,20 @@ struct SpotLightComponent {
     float inner_cone_deg = 15.0f;
     float outer_cone_deg = 25.0f;
     static glm::vec3 direction_from_rotation(const glm::vec3& rotation_degrees);
+};
+
+struct WaterPlaneComponent {
+    glm::vec3 color{0.05f, 0.18f, 0.30f};
+    // wave A
+    float amp_a = 0.3f;
+    float wavelength_a = 8.0f;
+    float speed_a = 1.0f;
+    float dir_ax = 0.6f;
+    // wave B
+    float amp_b = 0.15f;
+    float wavelength_b = 4.0f;
+    float speed_b = 1.4f;
+    float dir_bz = 0.7f;
 };
 
 struct DecalComponent {

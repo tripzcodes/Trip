@@ -137,6 +137,21 @@ struct DirectionalLightComponent {
     }
 };
 
+struct WaterPlaneComponent {
+    glm::vec3 color{0.05f, 0.18f, 0.30f};
+    // wave_a / wave_b each pack: amplitude, frequency (wavelength reciprocal),
+    // speed scalar, direction component
+    float amp_a = 0.3f;
+    float wavelength_a = 8.0f;
+    float speed_a = 1.0f;
+    float dir_ax = 0.6f;
+
+    float amp_b = 0.15f;
+    float wavelength_b = 4.0f;
+    float speed_b = 1.4f;
+    float dir_bz = 0.7f;
+};
+
 struct DecalComponent {
     // VkDescriptorSet pointing at the decal color texture. Use
     // Renderer::allocate_decal_set() to obtain one from a Texture.

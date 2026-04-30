@@ -214,6 +214,65 @@ Renderer::Renderer(const VulkanContext& context, const Allocator& allocator,
     decals_ = std::make_unique<DecalPass>(context, allocator,
         *gbuffer_, swapchain.extent(), shader_dir, MAX_FRAMES_IN_FLIGHT);
 
+    // procedural water plane mesh: 64x64 grid in XZ on y=0, scaled by transform
+    {
+        constexpr uint32_t N = 64; // quads per side
+        std::vector<Vertex> verts;
+        verts.reserve((N + 1) * (N + 1));
+        for (uint32_t z = 0; z <= N; z++) {
+            for (uint32_t x = 0; x <= N; x++) {
+                float u = static_cast<float>(x) / N;
+                float v = static_cast<float>(z) / N;
+                Vertex vx{};
+                vx.position = { u - 0.5f, 0.0f, v - 0.5f };
+                vx.normal = { 0.0f, 1.0f, 0.0f };
+                vx.color = { 1.0f, 1.0f, 1.0f };
+                vx.uv = { u, v };
+                vx.tangent = { 1.0f, 0.0f, 0.0f, 1.0f };
+                verts.push_back(vx);
+            }
+        }
+        std::vector<uint32_t> indices;
+        indices.reserve(N * N * 6);
+        for (uint32_t z = 0; z < N; z++) {
+            for (uint32_t x = 0; x < N; x++) {
+                uint32_t i0 = z * (N + 1) + x;
+                uint32_t i1 = i0 + 1;
+                uint32_t i2 = i0 + (N + 1);
+                uint32_t i3 = i2 + 1;
+                indices.push_back(i0); indices.push_back(i2); indices.push_back(i1);
+                indices.push_back(i1); indices.push_back(i2); indices.push_back(i3);
+            }
+        }
+        water_mesh_ = std::make_unique<Mesh>(allocator, verts, indices);
+    }
+
+    {
+        auto wbinding = Vertex::binding_description();
+        auto wattrs = Vertex::attribute_descriptions();
+
+        VkPipelineVertexInputStateCreateInfo wvi{};
+        wvi.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+        wvi.vertexBindingDescriptionCount = 1;
+        wvi.pVertexBindingDescriptions = &wbinding;
+        wvi.vertexAttributeDescriptionCount = static_cast<uint32_t>(wattrs.size());
+        wvi.pVertexAttributeDescriptions = wattrs.data();
+
+        PipelineConfig wcfg{};
+        wcfg.render_pass = gbuffer_->render_pass();
+        wcfg.extent = swapchain.extent();
+        wcfg.vert_path = shader_dir + "/water.vert.spv";
+        wcfg.frag_path = shader_dir + "/water.frag.spv";
+        wcfg.vertex_input = wvi;
+        wcfg.descriptor_layouts = { descriptors_->layout() };
+        wcfg.color_attachment_count = 3;
+        wcfg.use_push_constants = true;
+        // mat4 model + vec4 color_time + vec4 wave_a + vec4 wave_b = 112 bytes
+        wcfg.push_constant_size = sizeof(glm::mat4) + sizeof(glm::vec4) * 3;
+
+        water_pipeline_ = std::make_unique<Pipeline>(context.device(), wcfg);
+    }
+
     create_command_resources();
     create_sync_objects();
 }
@@ -904,6 +963,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             }
         }
 
+        draw_water(cmd);
         vkCmdEndRenderPass(cmd);
 
     } else {
@@ -1034,6 +1094,7 @@ void Renderer::geometry_pass(VkCommandBuffer cmd, const Camera& camera) {
             }
         }
 
+        draw_water(cmd);
         vkCmdEndRenderPass(cmd);
     }
 
@@ -1186,6 +1247,48 @@ void Renderer::simulate_and_draw_particles(VkCommandBuffer cmd, const Camera& ca
                      gpu_particles.data(),
                      static_cast<uint32_t>(gpu_particles.size()),
                      proj * view, cam_right, cam_up);
+}
+
+void Renderer::draw_water(VkCommandBuffer cmd) {
+    if (!scene_ || !water_pipeline_ || !water_mesh_) return;
+
+    auto wv = scene_->view<WaterPlaneComponent, TransformComponent>();
+    if (wv.size_hint() == 0) return;
+
+    float t = std::chrono::duration<float>(
+        std::chrono::steady_clock::now() - start_time_).count();
+
+    vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, water_pipeline_->handle());
+
+    VkDescriptorSet ds = descriptors_->set(current_frame_);
+    vkCmdBindDescriptorSets(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, water_pipeline_->layout(),
+                            0, 1, &ds, 0, nullptr);
+
+    water_mesh_->bind(cmd);
+
+    struct Push {
+        glm::mat4 model;
+        glm::vec4 color_time;
+        glm::vec4 wave_a;
+        glm::vec4 wave_b;
+    } push{};
+
+    for (auto e : wv) {
+        auto& w = wv.get<WaterPlaneComponent>(e);
+        glm::mat4 world = scene_->world_transform(e);
+
+        push.model = world;
+        push.color_time = glm::vec4(w.color, t);
+        push.wave_a = glm::vec4(w.amp_a, w.wavelength_a, w.speed_a, w.dir_ax);
+        push.wave_b = glm::vec4(w.amp_b, w.wavelength_b, w.speed_b, w.dir_bz);
+
+        vkCmdPushConstants(cmd, water_pipeline_->layout(),
+                           VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
+                           0, sizeof(push), &push);
+
+        vkCmdDrawIndexed(cmd, water_mesh_->index_count(), 1, 0, 0, 0);
+        draw_calls++;
+    }
 }
 
 void Renderer::decal_pass(VkCommandBuffer cmd, const Camera& camera) {

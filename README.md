@@ -64,6 +64,8 @@ shaders/          glsl → spir-v
 
 `Projected decals` · deferred box decals rendered between geometry and lighting, sample G-Buffer position, alpha-blend into albedo
 
+`Water` · Gerstner-wave vertex displacement on a procedural grid, written into the G-Buffer as a high-metallic / low-roughness surface so PBR + SSR carry sky and scene reflections automatically
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle

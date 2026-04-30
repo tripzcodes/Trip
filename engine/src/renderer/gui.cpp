@@ -254,6 +254,20 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            // water
+            if (registry.all_of<WaterPlaneComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& w = registry.get<WaterPlaneComponent>(entity);
+                    ImGui::ColorEdit3("Tint##water", &w.color.x);
+                    ImGui::SliderFloat("Wave A Amp", &w.amp_a, 0.0f, 2.0f);
+                    ImGui::SliderFloat("Wave A Wavelength", &w.wavelength_a, 0.5f, 30.0f);
+                    ImGui::SliderFloat("Wave A Speed", &w.speed_a, 0.0f, 5.0f);
+                    ImGui::SliderFloat("Wave B Amp", &w.amp_b, 0.0f, 2.0f);
+                    ImGui::SliderFloat("Wave B Wavelength", &w.wavelength_b, 0.5f, 30.0f);
+                    ImGui::SliderFloat("Wave B Speed", &w.speed_b, 0.0f, 5.0f);
+                }
+            }
+
             // decal
             if (registry.all_of<DecalComponent>(entity)) {
                 if (ImGui::CollapsingHeader("Decal", ImGuiTreeNodeFlags_DefaultOpen)) {

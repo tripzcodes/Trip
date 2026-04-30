@@ -43,5 +43,7 @@ compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/particle.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/particle.frag)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.vert)
 compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/decal.frag)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/water.vert)
+compile_shader(${CMAKE_CURRENT_SOURCE_DIR}/water.frag)
 
 add_custom_target(shaders ALL DEPENDS ${SPV_FILES})

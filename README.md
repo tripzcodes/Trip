@@ -22,18 +22,26 @@ No middleware. No abstraction layers. Raw Vulkan, written from the ground up —
 ## Architecture
 
 ```
-engine/
-├── core/         window, input, fps camera
-├── renderer/     vulkan context, swapchain, full deferred pipeline
-├── animation/    skeleton, keyframes, glTF loader, bone buffer
-├── audio/        miniaudio playback, 3D spatialization
-├── scene/        entt ecs, components, lod, serialization
-├── world/        chunk streaming, procedural terrain
-└── physics/      jolt physics integration
+engine/                      generic, game-agnostic — knows nothing about gameplay rules
+├── core/                    window, input, fps camera, file watcher
+├── renderer/                vulkan context, swapchain, full deferred pipeline,
+│                            particles, decals, gpu profiler, hot-reload
+├── animation/               skeleton, keyframes, glTF loader, bone buffer
+├── audio/                   miniaudio playback, 3D spatialization
+├── scene/                   entt ecs, engine-owned components, lod, serialization
+├── world/                   chunk streaming, procedural terrain, navmesh + agents
+└── physics/                 jolt physics integration
 
-game/             main app + demo scenes
-shaders/          glsl → spir-v
+game/                        the actual game — links engine, owns gameplay
+├── include/game/            HealthComponent, TriggerComponent, …
+└── src/                     main.cpp + gameplay systems (triggers, …)
+
+shaders/                     glsl → spir-v
 ```
+
+**The seam**: `engine::Gui` exposes two hooks (`set_add_menu_extra`,
+`set_entity_inspector`) so the game registers its own create-menu items and
+per-entity inspectors without engine code referencing game types.
 
 ## Pipeline
 

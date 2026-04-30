@@ -11,6 +11,7 @@
 #include <engine/renderer/renderer.h>
 #include <engine/scene/scene.h>
 #include <engine/scene/components.h>
+#include <engine/scene/prefabs.h>
 #include <engine/scene/lod.h>
 #include <engine/physics/physics_world.h>
 #include <engine/world/chunk.h>
@@ -53,14 +54,9 @@ int main() {
         engine::Renderer renderer(context, allocator, swapchain, shader_dir);
         engine::Gui gui(window.handle(), context, swapchain, renderer.lighting_render_pass());
 
-        // game-side GUI integration: trigger menu item + per-entity inspectors
-        gui.set_add_menu_extra([](engine::Scene& scene, const glm::vec3& spawn_pos) {
-            if (ImGui::MenuItem("Trigger (Damage)")) {
-                auto e = scene.create("Trigger");
-                scene.get<engine::TransformComponent>(e).position = spawn_pos;
-                scene.add<game::TriggerComponent>(e);
-            }
-        });
+        // game-side GUI integration: per-entity inspectors + prefab menu items
+        // (the prefab list is populated below; the lambda captures by reference
+        //  so anything added later still shows up in the menu.)
         gui.set_entity_inspector([](engine::Scene& scene, entt::entity e) {
             auto& reg = scene.registry();
             if (reg.all_of<game::HealthComponent>(e)) {
@@ -356,31 +352,43 @@ int main() {
         bool navmesh_baked = false;
         float nav_bake_timer = 0.5f; // wait briefly for chunks to populate
 
-        // seed NPC near origin so the navmesh path is exercised on launch
-        {
-            auto npc = scene.create("NPC");
-            auto& tr = scene.get<engine::TransformComponent>(npc);
-            tr.position = { 5.0f, 1.0f, 0.0f };
+        // game prefabs — registered factories the editor + hotkeys can spawn by name
+        engine::PrefabRegistry prefabs;
+        prefabs.add("NPC", [cube_mesh, cube_tex](engine::Scene& s, const glm::vec3& p) {
+            auto e = s.create("NPC");
+            auto& tr = s.get<engine::TransformComponent>(e);
+            tr.position = p;
             tr.scale = { 0.5f, 1.0f, 0.5f };
-            scene.add<engine::MeshComponent>(npc, engine::MeshComponent{cube_mesh});
-            auto& m = scene.add<engine::MaterialComponent>(npc);
-            m.albedo = glm::vec3(0.95f, 0.4f, 0.2f);
+            s.add<engine::MeshComponent>(e, engine::MeshComponent{cube_mesh});
+            auto& m = s.add<engine::MaterialComponent>(e);
+            m.albedo = { 0.95f, 0.4f, 0.2f };
             m.roughness = 0.8f;
             m.texture_set = cube_tex;
-            scene.add<engine::AgentComponent>(npc);
-            scene.add<game::HealthComponent>(npc);
-        }
-
-        // damage zone NPCs can wander into (kills them in two passes)
-        {
-            auto t = scene.create("DamageZone");
-            scene.get<engine::TransformComponent>(t).position = { 12.0f, 1.0f, 0.0f };
+            s.add<engine::AgentComponent>(e);
+            s.add<game::HealthComponent>(e);
+            return e;
+        });
+        prefabs.add("DamageZone", [](engine::Scene& s, const glm::vec3& p) {
+            auto e = s.create("DamageZone");
+            s.get<engine::TransformComponent>(e).position = p;
             game::TriggerComponent tc{};
             tc.half_extents = { 2.0f, 2.0f, 2.0f };
             tc.action = game::TriggerComponent::Damage;
             tc.magnitude = 60.0f;
-            scene.add<game::TriggerComponent>(t, tc);
-        }
+            s.add<game::TriggerComponent>(e, tc);
+            return e;
+        });
+
+        // seed scene
+        prefabs.spawn("NPC",        scene, { 5.0f, 1.0f, 0.0f });
+        prefabs.spawn("DamageZone", scene, { 12.0f, 1.0f, 0.0f });
+
+        // editor "+ Add Entity" menu items, sourced from the prefab registry
+        gui.set_add_menu_extra([&prefabs](engine::Scene& s, const glm::vec3& pos) {
+            for (const auto& name : prefabs.names()) {
+                if (ImGui::MenuItem(name.c_str())) prefabs.spawn(name, s, pos);
+            }
+        });
 
         // action bindings — game intents instead of raw GLFW keys
         engine::ActionMap actions;
@@ -438,19 +446,9 @@ int main() {
             if (gui.state().rebake_navmesh) {
                 navmesh.bake_from_scene(scene, 1.0f);
             }
-            // press N to spawn an NPC at the camera
+            // spawn NPC at the camera via the prefab registry
             if (!world_paused && actions.pressed(input, "spawn_npc")) {
-                auto npc = scene.create("NPC");
-                auto& tr = scene.get<engine::TransformComponent>(npc);
-                tr.position = camera.position() + camera.front() * 3.0f;
-                tr.scale = { 0.5f, 1.0f, 0.5f };
-                scene.add<engine::MeshComponent>(npc, engine::MeshComponent{cube_mesh});
-                auto& m = scene.add<engine::MaterialComponent>(npc);
-                m.albedo = glm::vec3(0.4f, 0.95f, 0.4f);
-                m.roughness = 0.8f;
-                m.texture_set = cube_tex;
-                scene.add<engine::AgentComponent>(npc);
-                scene.add<game::HealthComponent>(npc);
+                prefabs.spawn("NPC", scene, camera.position() + camera.front() * 3.0f);
             }
 
             // day-night cycle: advance time, drive sun pitch/yaw + intensity

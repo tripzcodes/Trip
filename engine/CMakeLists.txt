@@ -32,6 +32,7 @@ add_library(engine STATIC
     src/renderer/particle_pass.cpp
     src/renderer/decal_pass.cpp
     src/scene/serializer.cpp
+    src/scene/prefabs.cpp
     src/renderer/vma_impl.cpp
     src/renderer/stb_truetype_impl.cpp
     src/renderer/text.cpp

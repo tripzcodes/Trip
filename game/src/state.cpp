@@ -1,5 +1,6 @@
 #include <game/state.h>
 
+#include <engine/core/actions.h>
 #include <engine/core/input.h>
 #include <engine/scene/scene.h>
 
@@ -117,7 +118,7 @@ public:
     bool pauses_world() const override { return true; }
 
     void update(GameContext& ctx, StateMachine& sm, float) override {
-        if (ctx.input.key_pressed(GLFW_KEY_ENTER)) {
+        if (ctx.actions.pressed(ctx.input, "start")) {
             sm.replace(ctx, make_playing_state());
         }
     }
@@ -133,7 +134,7 @@ public:
     bool pauses_world() const override { return false; }
 
     void update(GameContext& ctx, StateMachine& sm, float) override {
-        if (ctx.input.key_pressed(GLFW_KEY_P)) {
+        if (ctx.actions.pressed(ctx.input, "pause")) {
             sm.push(ctx, make_paused_state());
         }
     }
@@ -145,10 +146,10 @@ public:
     bool pauses_world() const override { return true; }
 
     void update(GameContext& ctx, StateMachine& sm, float) override {
-        if (ctx.input.key_pressed(GLFW_KEY_P)) {
+        if (ctx.actions.pressed(ctx.input, "pause")) {
             sm.pop(ctx);
         }
-        if (ctx.input.key_pressed(GLFW_KEY_M)) {
+        if (ctx.actions.pressed(ctx.input, "menu")) {
             sm.replace(ctx, make_menu_state());
         }
     }

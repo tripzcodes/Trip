@@ -20,6 +20,7 @@
 #include <engine/audio/audio.h>
 #include <engine/renderer/text.h>
 #include <engine/core/file_watcher.h>
+#include <engine/core/actions.h>
 #include <engine/world/navmesh.h>
 #include <game/components.h>
 #include <game/triggers.h>
@@ -381,8 +382,17 @@ int main() {
             scene.add<game::TriggerComponent>(t, tc);
         }
 
+        // action bindings — game intents instead of raw GLFW keys
+        engine::ActionMap actions;
+        actions.bind("start",       GLFW_KEY_ENTER);
+        actions.bind("pause",       GLFW_KEY_P);
+        actions.bind("menu",        GLFW_KEY_M);
+        actions.bind("spawn_npc",   GLFW_KEY_N);
+        actions.bind("rebake_nav",  GLFW_KEY_B);
+        actions.bind("ping",        GLFW_KEY_F);
+
         // game state machine — opens on the menu, world stays frozen until Enter
-        game::GameContext gctx{ scene, input, camera, navmesh, navmesh_baked };
+        game::GameContext gctx{ scene, input, actions, camera, navmesh, navmesh_baked };
         game::StateMachine state_machine;
         state_machine.push(gctx, game::make_menu_state());
 
@@ -429,7 +439,7 @@ int main() {
                 navmesh.bake_from_scene(scene, 1.0f);
             }
             // press N to spawn an NPC at the camera
-            if (!world_paused && input.key_pressed(GLFW_KEY_N)) {
+            if (!world_paused && actions.pressed(input, "spawn_npc")) {
                 auto npc = scene.create("NPC");
                 auto& tr = scene.get<engine::TransformComponent>(npc);
                 tr.position = camera.position() + camera.front() * 3.0f;
@@ -467,8 +477,8 @@ int main() {
             // update audio listener to camera position
             audio.set_listener(camera.position(), camera.front(), glm::vec3(0, 1, 0));
 
-            // F key plays test sound
-            if (input.key_held(GLFW_KEY_F)) {
+            // ping sound (action)
+            if (actions.held(input, "ping")) {
                 if (!audio.is_playing(sfx_ping)) {
                     audio.play(sfx_ping);
                 }

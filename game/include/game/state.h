@@ -4,6 +4,7 @@
 #include <vector>
 
 namespace engine {
+class ActionMap;
 class Camera;
 class Input;
 class NavGrid;
@@ -15,11 +16,12 @@ namespace game {
 // Refs that every state can reach. Held by value-of-references in main.cpp,
 // passed to update() and the lifecycle hooks each frame.
 struct GameContext {
-    engine::Scene&   scene;
-    engine::Input&   input;
-    engine::Camera&  camera;
-    engine::NavGrid& navmesh;
-    bool&            navmesh_baked;
+    engine::Scene&     scene;
+    engine::Input&     input;
+    engine::ActionMap& actions;
+    engine::Camera&    camera;
+    engine::NavGrid&   navmesh;
+    bool&              navmesh_baked;
 };
 
 class StateMachine; // forward

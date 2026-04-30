@@ -456,8 +456,10 @@ int main() {
             for (const auto& r : renderer.gpu_timings()) {
                 timings.push_back({r.name, r.ms});
             }
+            // spawn new entities ~3 m in front of the camera
+            glm::vec3 spawn_pos = camera.position() + camera.front() * 3.0f;
             gui.begin_frame(scene, &audio, renderer.draw_calls, renderer.culled_objects,
-                            chunks.loaded_chunks(), &timings);
+                            chunks.loaded_chunks(), &timings, spawn_pos);
 
             // queue in-game text
             auto cam_p = camera.position();

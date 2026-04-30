@@ -79,7 +79,8 @@ void Gui::create_descriptor_pool() {
 void Gui::begin_frame(Scene& scene, Audio* audio,
                       uint32_t draw_calls, uint32_t culled_objects,
                       uint32_t loaded_chunks,
-                      const std::vector<GpuTimingView>* gpu_timings) {
+                      const std::vector<GpuTimingView>* gpu_timings,
+                      glm::vec3 spawn_pos) {
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
@@ -174,18 +175,52 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
     ImGui::End();
 
     // scene panel — all entities and their components
-    draw_scene_panel(scene);
+    draw_scene_panel(scene, spawn_pos);
 }
 
-void Gui::draw_scene_panel(Scene& scene) {
+void Gui::draw_scene_panel(Scene& scene, glm::vec3 spawn_pos) {
     ImGui::SetNextWindowPos(ImVec2(10, 200), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(280, 0), ImGuiCond_FirstUseEver);
 
     ImGui::Begin("Scene");
 
     auto& registry = scene.registry();
-    auto view = registry.view<TagComponent>();
 
+    // create-new entity menu — components that don't need GPU resources
+    if (ImGui::Button("+ Add Entity")) {
+        ImGui::OpenPopup("AddEntity");
+    }
+    if (ImGui::BeginPopup("AddEntity")) {
+        auto place = [&](const char* name) -> entt::entity {
+            auto e = scene.create(name);
+            scene.get<TransformComponent>(e).position = spawn_pos;
+            return e;
+        };
+        if (ImGui::MenuItem("Empty"))         { place("Empty"); }
+        if (ImGui::MenuItem("Point Light")) {
+            auto e = place("Point Light");
+            scene.add<PointLightComponent>(e);
+        }
+        if (ImGui::MenuItem("Spot Light")) {
+            auto e = place("Spot Light");
+            scene.add<SpotLightComponent>(e);
+        }
+        if (ImGui::MenuItem("Water Plane")) {
+            auto e = place("Water Plane");
+            scene.get<TransformComponent>(e).scale = {30.0f, 1.0f, 30.0f};
+            scene.add<WaterPlaneComponent>(e);
+        }
+        if (ImGui::MenuItem("Particle Emitter")) {
+            auto e = place("Emitter");
+            scene.add<ParticleEmitterComponent>(e);
+        }
+        ImGui::EndPopup();
+    }
+
+    // collect entities to destroy AFTER iteration so we don't invalidate views
+    std::vector<entt::entity> to_destroy;
+
+    auto view = registry.view<TagComponent>();
     for (auto entity : view) {
         auto& tag = view.get<TagComponent>(entity);
 
@@ -318,9 +353,18 @@ void Gui::draw_scene_panel(Scene& scene) {
                 }
             }
 
+            ImGui::Separator();
+            if (ImGui::SmallButton("Delete")) {
+                to_destroy.push_back(entity);
+            }
+
             ImGui::TreePop();
         }
         ImGui::PopID();
+    }
+
+    for (auto e : to_destroy) {
+        scene.destroy(e);
     }
 
     ImGui::End();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <glm/glm.hpp>
 
 #include <string>
 #include <vector>
@@ -70,14 +71,15 @@ public:
     void begin_frame(Scene& scene, Audio* audio = nullptr,
                      uint32_t draw_calls = 0, uint32_t culled_objects = 0,
                      uint32_t loaded_chunks = 0,
-                     const std::vector<GpuTimingView>* gpu_timings = nullptr);
+                     const std::vector<GpuTimingView>* gpu_timings = nullptr,
+                     glm::vec3 spawn_pos = glm::vec3{0.0f});
     void render(VkCommandBuffer cmd);
 
     GuiState& state() { return state_; }
 
 private:
     void create_descriptor_pool();
-    void draw_scene_panel(Scene& scene);
+    void draw_scene_panel(Scene& scene, glm::vec3 spawn_pos);
 
     const VulkanContext& context_;
     VkDescriptorPool pool_ = VK_NULL_HANDLE;

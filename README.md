@@ -68,6 +68,8 @@ shaders/          glsl → spir-v
 
 `Vegetation + wind` · gbuffer pipeline variant with world-space sin/cos wind displacement, height-mask gates the bend so only tops sway
 
+`In-engine scene editor` · Scene panel adds and deletes entities at runtime — drop point lights, spot lights, water planes, particle emitters at the camera; per-entity inspectors; existing JSON save/load round-trips it all
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle

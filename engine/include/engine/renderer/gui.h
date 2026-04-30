@@ -3,6 +3,9 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
+#include <entt/entt.hpp>
+
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -78,9 +81,19 @@ public:
 
     GuiState& state() { return state_; }
 
+    // Game-side hooks. Engine GUI handles engine-owned components; game code
+    // registers these to render its own components in the scene panel.
+    using EntityInspectorFn = std::function<void(Scene& scene, entt::entity)>;
+    using AddMenuFn = std::function<void(Scene& scene, const glm::vec3& spawn_pos)>;
+    void set_entity_inspector(EntityInspectorFn fn) { entity_inspector_ = std::move(fn); }
+    void set_add_menu_extra(AddMenuFn fn) { add_menu_extra_ = std::move(fn); }
+
 private:
     void create_descriptor_pool();
     void draw_scene_panel(Scene& scene, glm::vec3 spawn_pos);
+
+    EntityInspectorFn entity_inspector_;
+    AddMenuFn add_menu_extra_;
 
     const VulkanContext& context_;
     VkDescriptorPool pool_ = VK_NULL_HANDLE;

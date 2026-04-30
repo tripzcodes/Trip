@@ -21,7 +21,10 @@
 #include <engine/renderer/text.h>
 #include <engine/core/file_watcher.h>
 #include <engine/world/navmesh.h>
-#include <engine/world/triggers.h>
+#include <game/components.h>
+#include <game/triggers.h>
+
+#include <imgui.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -47,6 +50,42 @@ int main() {
 
         engine::Renderer renderer(context, allocator, swapchain, shader_dir);
         engine::Gui gui(window.handle(), context, swapchain, renderer.lighting_render_pass());
+
+        // game-side GUI integration: trigger menu item + per-entity inspectors
+        gui.set_add_menu_extra([](engine::Scene& scene, const glm::vec3& spawn_pos) {
+            if (ImGui::MenuItem("Trigger (Damage)")) {
+                auto e = scene.create("Trigger");
+                scene.get<engine::TransformComponent>(e).position = spawn_pos;
+                scene.add<game::TriggerComponent>(e);
+            }
+        });
+        gui.set_entity_inspector([](engine::Scene& scene, entt::entity e) {
+            auto& reg = scene.registry();
+            if (reg.all_of<game::HealthComponent>(e)) {
+                if (ImGui::CollapsingHeader("Health", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& h = reg.get<game::HealthComponent>(e);
+                    ImGui::SliderFloat("Current", &h.current, 0.0f, h.max);
+                    ImGui::SliderFloat("Max", &h.max, 1.0f, 1000.0f);
+                    ImGui::Text("Dead: %s", h.dead ? "yes" : "no");
+                }
+            }
+            if (reg.all_of<game::TriggerComponent>(e)) {
+                if (ImGui::CollapsingHeader("Trigger", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& t = reg.get<game::TriggerComponent>(e);
+                    ImGui::DragFloat3("Half Extents", &t.half_extents.x, 0.1f, 0.1f, 50.0f);
+                    const char* actions[] = { "None", "Damage", "Destroy", "Heal" };
+                    int a = static_cast<int>(t.action);
+                    if (ImGui::Combo("Action", &a, actions, 4)) {
+                        t.action = static_cast<game::TriggerComponent::Action>(a);
+                    }
+                    if (t.action != game::TriggerComponent::None &&
+                        t.action != game::TriggerComponent::Destroy) {
+                        ImGui::SliderFloat("Magnitude", &t.magnitude, 0.0f, 200.0f);
+                    }
+                    ImGui::Text("Inside: %zu", t.inside.size());
+                }
+            }
+        });
 
         input.set_cursor_captured(true);
 
@@ -327,18 +366,18 @@ int main() {
             m.roughness = 0.8f;
             m.texture_set = cube_tex;
             scene.add<engine::AgentComponent>(npc);
-            scene.add<engine::HealthComponent>(npc);
+            scene.add<game::HealthComponent>(npc);
         }
 
         // damage zone NPCs can wander into (kills them in two passes)
         {
             auto t = scene.create("DamageZone");
             scene.get<engine::TransformComponent>(t).position = { 12.0f, 1.0f, 0.0f };
-            engine::TriggerComponent tc{};
+            game::TriggerComponent tc{};
             tc.half_extents = { 2.0f, 2.0f, 2.0f };
-            tc.action = engine::TriggerComponent::Damage;
+            tc.action = game::TriggerComponent::Damage;
             tc.magnitude = 60.0f;
-            scene.add<engine::TriggerComponent>(t, tc);
+            scene.add<game::TriggerComponent>(t, tc);
         }
 
         // main loop
@@ -374,7 +413,7 @@ int main() {
                 }
             } else {
                 engine::update_agents(scene, navmesh, dt);
-                engine::update_triggers(scene);
+                game::update_triggers(scene);
             }
             if (gui.state().rebake_navmesh) {
                 navmesh.bake_from_scene(scene, 1.0f);
@@ -393,7 +432,7 @@ int main() {
                 m.roughness = 0.8f;
                 m.texture_set = cube_tex;
                 scene.add<engine::AgentComponent>(npc);
-                scene.add<engine::HealthComponent>(npc);
+                scene.add<game::HealthComponent>(npc);
             }
             prev_n = n_now;
 

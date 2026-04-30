@@ -137,6 +137,20 @@ struct DirectionalLightComponent {
     }
 };
 
+// AI agent that follows a sequence of world-space waypoints. The waypoints
+// are produced by NavGrid::find_path; the engine's `update_agents` helper
+// advances the agent along the path each frame.
+struct AgentComponent {
+    float speed = 2.5f;
+    std::vector<glm::vec3> path;
+    uint32_t waypoint = 0;
+    glm::vec3 target{0.0f};
+    bool wandering = true;
+    float wander_radius = 12.0f;
+    float repath_cooldown = 0.0f; // seconds until allowed to repath
+    uint32_t rng = 0xa6c7d3e1u;
+};
+
 // Tag for entities that should be rendered with the wind-displacement vertex
 // shader. The mesh is shaded by the same gbuffer.frag, so the entity should
 // also have a MeshComponent (and optionally MaterialComponent).

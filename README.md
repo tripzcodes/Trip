@@ -70,6 +70,8 @@ shaders/          glsl → spir-v
 
 `In-engine scene editor` · Scene panel adds and deletes entities at runtime — drop point lights, spot lights, water planes, particle emitters at the camera; per-entity inspectors; existing JSON save/load round-trips it all
 
+`Navmesh + AI agents` · grid-based NavGrid with A* (8-direction, no corner-cutting), bakes obstacles from `BoundsComponent` AABBs; `AgentComponent` follows waypoints and wanders within a configurable radius; press `N` in-game to spawn an NPC at the camera
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle
@@ -143,6 +145,7 @@ cmake --build build
 | `Mouse` | Look |
 | `Tab` | Capture cursor |
 | `Esc` | Release cursor |
+| `N` | Spawn an NPC at the camera |
 
 ---
 

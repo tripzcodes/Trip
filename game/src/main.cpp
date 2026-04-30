@@ -20,6 +20,7 @@
 #include <engine/audio/audio.h>
 #include <engine/renderer/text.h>
 #include <engine/core/file_watcher.h>
+#include <engine/world/navmesh.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -308,6 +309,25 @@ int main() {
         });
         float reload_timer = 0.0f;
 
+        // navmesh covering ±100 m around the origin at 1 m cells
+        engine::NavGrid navmesh({-100.0f, -100.0f}, {200.0f, 200.0f}, 1.0f);
+        bool navmesh_baked = false;
+        float nav_bake_timer = 0.5f; // wait briefly for chunks to populate
+
+        // seed NPC near origin so the navmesh path is exercised on launch
+        {
+            auto npc = scene.create("NPC");
+            auto& tr = scene.get<engine::TransformComponent>(npc);
+            tr.position = { 5.0f, 1.0f, 0.0f };
+            tr.scale = { 0.5f, 1.0f, 0.5f };
+            scene.add<engine::MeshComponent>(npc, engine::MeshComponent{cube_mesh});
+            auto& m = scene.add<engine::MaterialComponent>(npc);
+            m.albedo = glm::vec3(0.95f, 0.4f, 0.2f);
+            m.roughness = 0.8f;
+            m.texture_set = cube_tex;
+            scene.add<engine::AgentComponent>(npc);
+        }
+
         // main loop
         auto last_time = std::chrono::high_resolution_clock::now();
 
@@ -331,6 +351,36 @@ int main() {
 
             camera.move_speed = gui.state().camera_speed;
             camera.update(input, dt);
+
+            // bake navmesh once chunks have populated, then advance agents
+            if (!navmesh_baked) {
+                nav_bake_timer -= dt;
+                if (nav_bake_timer <= 0.0f) {
+                    navmesh.bake_from_scene(scene, 1.0f);
+                    navmesh_baked = true;
+                }
+            } else {
+                engine::update_agents(scene, navmesh, dt);
+            }
+            if (gui.state().rebake_navmesh) {
+                navmesh.bake_from_scene(scene, 1.0f);
+            }
+            // press N to spawn an NPC at the camera (edge-triggered)
+            static bool prev_n = false;
+            bool n_now = input.key_held(GLFW_KEY_N);
+            if (n_now && !prev_n) {
+                auto npc = scene.create("NPC");
+                auto& tr = scene.get<engine::TransformComponent>(npc);
+                tr.position = camera.position() + camera.front() * 3.0f;
+                tr.scale = { 0.5f, 1.0f, 0.5f };
+                scene.add<engine::MeshComponent>(npc, engine::MeshComponent{cube_mesh});
+                auto& m = scene.add<engine::MaterialComponent>(npc);
+                m.albedo = glm::vec3(0.4f, 0.95f, 0.4f);
+                m.roughness = 0.8f;
+                m.texture_set = cube_tex;
+                scene.add<engine::AgentComponent>(npc);
+            }
+            prev_n = n_now;
 
             // day-night cycle: advance time, drive sun pitch/yaw + intensity
             if (gui.state().day_night_cycle) {

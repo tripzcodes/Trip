@@ -57,6 +57,7 @@ struct GuiState {
     // save/load triggers (set to true for one frame when button clicked)
     bool save_scene = false;
     bool load_scene = false;
+    bool rebake_navmesh = false;
 };
 
 class Gui {

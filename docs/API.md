@@ -577,6 +577,17 @@ struct VegetationComponent {
     float height_max = 1.5f;
 };
 
+struct AgentComponent {
+    float speed = 2.5f;
+    std::vector<glm::vec3> path;
+    uint32_t waypoint = 0;
+    glm::vec3 target{0.0f};
+    bool wandering = true;
+    float wander_radius = 12.0f;
+    float repath_cooldown = 0.0f;
+    uint32_t rng = 0xa6c7d3e1u;
+};
+
 struct WaterPlaneComponent {
     glm::vec3 color{0.05f, 0.18f, 0.30f};
     // wave A
@@ -657,6 +668,28 @@ JSON format. Clears scene before loading. Persists tag, transform, directional/p
 ---
 
 ## World
+
+### NavGrid
+
+```cpp
+class NavGrid {
+    NavGrid(glm::vec2 origin_xz, glm::vec2 size_xz, float cell_size);
+
+    void clear();
+    void mark_obstacle_aabb(glm::vec3 world_min, glm::vec3 world_max);
+    void bake_from_scene(const Scene& scene, float walkable_y = 1.0f);
+
+    bool find_path(glm::vec3 start, glm::vec3 end,
+                   std::vector<glm::vec3>& out_path) const;
+
+    bool walkable(int cx, int cz) const;
+};
+
+// drives every AgentComponent in `scene` along its NavGrid path
+void update_agents(Scene& scene, const NavGrid& nav, float dt);
+```
+
+2D grid in XZ. `bake_from_scene` walks `BoundsComponent` AABBs whose Y range straddles `walkable_y` and stamps every overlapping cell as blocked, skipping massive footprints (terrain, chunk volumes). `find_path` runs A* with 8-direction moves, no corner-cutting through obstacles, octile heuristic; the returned path keeps the exact start and end positions, with cell-centred waypoints in between. Agents pair this with `AgentComponent` to wander; pathing failures back off via `repath_cooldown` so failed lookups don't burn the frame.
 
 ### Terrain
 

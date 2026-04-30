@@ -141,6 +141,7 @@ void Gui::begin_frame(Scene& scene, Audio* audio,
     state_.save_scene = ImGui::Button("Save Scene");
     ImGui::SameLine();
     state_.load_scene = ImGui::Button("Load Scene");
+    state_.rebake_navmesh = ImGui::Button("Rebake Navmesh");
 
     if (audio) {
         ImGui::Separator();
@@ -286,6 +287,17 @@ void Gui::draw_scene_panel(Scene& scene, glm::vec3 spawn_pos) {
                     ImGui::ColorEdit3("Color##pt", &l.color.x);
                     ImGui::SliderFloat("Intensity##pt", &l.intensity, 0.0f, 50.0f);
                     ImGui::SliderFloat("Range##pt", &l.range, 0.1f, 100.0f);
+                }
+            }
+
+            // navmesh agent
+            if (registry.all_of<AgentComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Agent", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& a = registry.get<AgentComponent>(entity);
+                    ImGui::SliderFloat("Speed", &a.speed, 0.1f, 10.0f);
+                    ImGui::Checkbox("Wander", &a.wandering);
+                    ImGui::SliderFloat("Wander Radius", &a.wander_radius, 1.0f, 50.0f);
+                    ImGui::Text("Path: %zu wp (%u)", a.path.size(), a.waypoint);
                 }
             }
 

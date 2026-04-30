@@ -90,6 +90,10 @@ per-entity inspectors without engine code referencing game types.
 
 `HUD layer` · `TextRenderer::draw_anchored(text, Anchor::TopLeft, …)` — 9-way screen anchors with pixel offsets, plus `measure_width` / `line_height` for custom layout
 
+`Physics raycast` · `PhysicsWorld::raycast(origin, dir, max)` returns hit entity, world point, surface normal, distance — drives click-to-select, AI line-of-sight, gameplay shooting
+
+`Audio one-shots` · `Audio::play_at(handle, world_pos)` fires a self-cleaning spatialized copy off an already-loaded sound; multiple instances overlap; `Audio::update()` reaps finished plays
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle
@@ -167,6 +171,7 @@ cmake --build build
 | `Enter` | Start game from Menu |
 | `P` | Pause / resume |
 | `M` | Return to Menu (from Paused) |
+| `X` | Shoot (raycast — damages NPC, fires positional ping at hit point) |
 
 ---
 

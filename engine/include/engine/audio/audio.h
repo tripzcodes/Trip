@@ -33,6 +33,18 @@ public:
     void set_position(uint32_t handle, const glm::vec3& position);
     void set_attenuation(uint32_t handle, float min_dist, float max_dist);
 
+    // Fire-and-forget one-shot at a world position. Spawns a fresh playback
+    // off the loaded sound (so it can overlap with itself), spatializes it,
+    // and self-cleans when finished. Drives over the existing sound's data;
+    // the original handle is unaffected. Call `update()` once per frame to
+    // sweep finished one-shots.
+    void play_at(uint32_t handle, const glm::vec3& position,
+                 float volume = 1.0f,
+                 float min_dist = 1.0f, float max_dist = 30.0f);
+
+    // sweep finished one-shots; cheap, O(active one-shots).
+    void update();
+
     // global
     void set_master_volume(float volume);
     void stop_all();

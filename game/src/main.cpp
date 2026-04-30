@@ -457,16 +457,19 @@ int main() {
                 prefabs.spawn("NPC", scene, camera.position() + camera.front() * 3.0f);
             }
 
-            // shoot: raycast from the camera, deal 30 damage to whatever's hit
+            // shoot: raycast from the camera, deal 30 damage and fire a one-shot
             if (!world_paused && actions.pressed(input, "shoot")) {
                 auto hit = physics.raycast(camera.position(), camera.front(), 100.0f);
-                if (hit.hit && scene.registry().valid(hit.entity)
-                    && scene.registry().all_of<game::HealthComponent>(hit.entity)) {
-                    auto& h = scene.get<game::HealthComponent>(hit.entity);
-                    h.current -= 30.0f;
-                    std::cout << "[shoot] hit entity at "
-                              << hit.point.x << "," << hit.point.y << "," << hit.point.z
-                              << "  dist=" << hit.distance << "\n";
+                if (hit.hit) {
+                    audio.play_at(sfx_ping, hit.point, 1.0f, 1.0f, 30.0f);
+                    if (scene.registry().valid(hit.entity)
+                        && scene.registry().all_of<game::HealthComponent>(hit.entity)) {
+                        auto& h = scene.get<game::HealthComponent>(hit.entity);
+                        h.current -= 30.0f;
+                        std::cout << "[shoot] hit entity at "
+                                  << hit.point.x << "," << hit.point.y << "," << hit.point.z
+                                  << "  dist=" << hit.distance << "\n";
+                    }
                 }
             }
 
@@ -493,6 +496,7 @@ int main() {
 
             // update audio listener to camera position
             audio.set_listener(camera.position(), camera.front(), glm::vec3(0, 1, 0));
+            audio.update(); // sweep finished one-shots
 
             // ping sound (action)
             if (actions.held(input, "ping")) {

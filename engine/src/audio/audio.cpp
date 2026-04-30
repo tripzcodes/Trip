@@ -11,6 +11,7 @@ namespace engine {
 struct Audio::Impl {
     ma_engine engine{};
     std::vector<ma_sound*> sounds;
+    std::vector<ma_sound*> one_shots; // active fire-and-forget copies
     bool initialized = false;
 };
 
@@ -29,6 +30,9 @@ Audio::Audio() : impl_(std::make_unique<Impl>()) {
 
 Audio::~Audio() {
     if (impl_->initialized) {
+        for (auto* sound : impl_->one_shots) {
+            if (sound) { ma_sound_uninit(sound); delete sound; }
+        }
         for (auto* sound : impl_->sounds) {
             if (sound) {
                 ma_sound_uninit(sound);
@@ -104,6 +108,46 @@ void Audio::set_attenuation(uint32_t handle, float min_dist, float max_dist) {
     ma_sound_set_min_distance(impl_->sounds[handle], min_dist);
     ma_sound_set_max_distance(impl_->sounds[handle], max_dist);
     ma_sound_set_attenuation_model(impl_->sounds[handle], ma_attenuation_model_linear);
+}
+
+void Audio::play_at(uint32_t handle, const glm::vec3& position,
+                    float volume, float min_dist, float max_dist) {
+    if (!impl_->initialized) return;
+    if (handle >= impl_->sounds.size() || !impl_->sounds[handle]) return;
+
+    auto* original = impl_->sounds[handle];
+    auto* clone = new ma_sound;
+    if (ma_sound_init_copy(&impl_->engine, original, MA_SOUND_FLAG_DECODE,
+                           nullptr, clone) != MA_SUCCESS) {
+        delete clone;
+        return;
+    }
+
+    ma_sound_set_volume(clone, volume);
+    ma_sound_set_position(clone, position.x, position.y, position.z);
+    ma_sound_set_spatialization_enabled(clone, MA_TRUE);
+    ma_sound_set_min_distance(clone, min_dist);
+    ma_sound_set_max_distance(clone, max_dist);
+    ma_sound_set_attenuation_model(clone, ma_attenuation_model_linear);
+    ma_sound_start(clone);
+
+    impl_->one_shots.push_back(clone);
+}
+
+void Audio::update() {
+    if (!impl_->initialized) return;
+    auto& v = impl_->one_shots;
+    size_t write = 0;
+    for (size_t read = 0; read < v.size(); read++) {
+        auto* s = v[read];
+        if (s && ma_sound_is_playing(s) == MA_FALSE && ma_sound_at_end(s) == MA_TRUE) {
+            ma_sound_uninit(s);
+            delete s;
+        } else {
+            v[write++] = s;
+        }
+    }
+    v.resize(write);
 }
 
 void Audio::set_master_volume(float volume) {

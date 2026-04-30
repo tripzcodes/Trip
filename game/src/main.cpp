@@ -21,6 +21,7 @@
 #include <engine/renderer/text.h>
 #include <engine/core/file_watcher.h>
 #include <engine/world/navmesh.h>
+#include <engine/world/triggers.h>
 
 #include <glm/glm.hpp>
 #include <glm/gtc/constants.hpp>
@@ -326,6 +327,18 @@ int main() {
             m.roughness = 0.8f;
             m.texture_set = cube_tex;
             scene.add<engine::AgentComponent>(npc);
+            scene.add<engine::HealthComponent>(npc);
+        }
+
+        // damage zone NPCs can wander into (kills them in two passes)
+        {
+            auto t = scene.create("DamageZone");
+            scene.get<engine::TransformComponent>(t).position = { 12.0f, 1.0f, 0.0f };
+            engine::TriggerComponent tc{};
+            tc.half_extents = { 2.0f, 2.0f, 2.0f };
+            tc.action = engine::TriggerComponent::Damage;
+            tc.magnitude = 60.0f;
+            scene.add<engine::TriggerComponent>(t, tc);
         }
 
         // main loop
@@ -361,6 +374,7 @@ int main() {
                 }
             } else {
                 engine::update_agents(scene, navmesh, dt);
+                engine::update_triggers(scene);
             }
             if (gui.state().rebake_navmesh) {
                 navmesh.bake_from_scene(scene, 1.0f);
@@ -379,6 +393,7 @@ int main() {
                 m.roughness = 0.8f;
                 m.texture_set = cube_tex;
                 scene.add<engine::AgentComponent>(npc);
+                scene.add<engine::HealthComponent>(npc);
             }
             prev_n = n_now;
 

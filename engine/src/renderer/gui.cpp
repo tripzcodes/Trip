@@ -215,6 +215,10 @@ void Gui::draw_scene_panel(Scene& scene, glm::vec3 spawn_pos) {
             auto e = place("Emitter");
             scene.add<ParticleEmitterComponent>(e);
         }
+        if (ImGui::MenuItem("Trigger (Damage)")) {
+            auto e = place("Trigger");
+            scene.add<TriggerComponent>(e);
+        }
         ImGui::EndPopup();
     }
 
@@ -287,6 +291,34 @@ void Gui::draw_scene_panel(Scene& scene, glm::vec3 spawn_pos) {
                     ImGui::ColorEdit3("Color##pt", &l.color.x);
                     ImGui::SliderFloat("Intensity##pt", &l.intensity, 0.0f, 50.0f);
                     ImGui::SliderFloat("Range##pt", &l.range, 0.1f, 100.0f);
+                }
+            }
+
+            // health
+            if (registry.all_of<HealthComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Health", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& h = registry.get<HealthComponent>(entity);
+                    ImGui::SliderFloat("Current", &h.current, 0.0f, h.max);
+                    ImGui::SliderFloat("Max", &h.max, 1.0f, 1000.0f);
+                    ImGui::Text("Dead: %s", h.dead ? "yes" : "no");
+                }
+            }
+
+            // trigger volume
+            if (registry.all_of<TriggerComponent>(entity)) {
+                if (ImGui::CollapsingHeader("Trigger", ImGuiTreeNodeFlags_DefaultOpen)) {
+                    auto& t = registry.get<TriggerComponent>(entity);
+                    ImGui::DragFloat3("Half Extents", &t.half_extents.x, 0.1f, 0.1f, 50.0f);
+                    const char* actions[] = { "None", "Damage", "Destroy", "Heal" };
+                    int a = static_cast<int>(t.action);
+                    if (ImGui::Combo("Action", &a, actions, 4)) {
+                        t.action = static_cast<TriggerComponent::Action>(a);
+                    }
+                    if (t.action != TriggerComponent::None &&
+                        t.action != TriggerComponent::Destroy) {
+                        ImGui::SliderFloat("Magnitude", &t.magnitude, 0.0f, 200.0f);
+                    }
+                    ImGui::Text("Inside: %zu", t.inside.size());
                 }
             }
 

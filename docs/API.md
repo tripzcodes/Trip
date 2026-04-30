@@ -577,6 +577,20 @@ struct VegetationComponent {
     float height_max = 1.5f;
 };
 
+struct HealthComponent {
+    float current = 100.0f;
+    float max = 100.0f;
+    bool dead = false;
+};
+
+struct TriggerComponent {
+    enum Action { None, Damage, Destroy, Heal };
+    glm::vec3 half_extents{1.0f};
+    Action action = Damage;
+    float magnitude = 25.0f;
+    std::vector<entt::entity> inside; // runtime-tracked overlap set
+};
+
 struct AgentComponent {
     float speed = 2.5f;
     std::vector<glm::vec3> path;
@@ -687,6 +701,10 @@ class NavGrid {
 
 // drives every AgentComponent in `scene` along its NavGrid path
 void update_agents(Scene& scene, const NavGrid& nav, float dt);
+
+// fires trigger actions on agent entry, then sweeps any HealthComponent
+// whose `current` has reached zero (destroying the entity).
+void update_triggers(Scene& scene);
 ```
 
 2D grid in XZ. `bake_from_scene` walks `BoundsComponent` AABBs whose Y range straddles `walkable_y` and stamps every overlapping cell as blocked, skipping massive footprints (terrain, chunk volumes). `find_path` runs A* with 8-direction moves, no corner-cutting through obstacles, octile heuristic; the returned path keeps the exact start and end positions, with cell-centred waypoints in between. Agents pair this with `AgentComponent` to wander; pathing failures back off via `repath_cooldown` so failed lookups don't burn the frame.

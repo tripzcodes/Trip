@@ -72,6 +72,8 @@ shaders/          glsl → spir-v
 
 `Navmesh + AI agents` · grid-based NavGrid with A* (8-direction, no corner-cutting), bakes obstacles from `BoundsComponent` AABBs; `AgentComponent` follows waypoints and wanders within a configurable radius; press `N` in-game to spawn an NPC at the camera
 
+`Triggers + Health` · data-driven trigger volumes (Damage / Heal / Destroy actions) fire on every entity that enters their AABB; `HealthComponent` decremented to 0 → entity destroyed. No scripting required — small components + a single `update_triggers(scene)` system
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle

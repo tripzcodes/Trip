@@ -43,6 +43,7 @@ add_library(engine STATIC
     src/world/chunk.cpp
     src/world/terrain.cpp
     src/world/navmesh.cpp
+    src/world/triggers.cpp
     src/renderer/skinned_mesh.cpp
     src/animation/cgltf_impl.cpp
     src/animation/animation_player.cpp

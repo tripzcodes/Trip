@@ -435,6 +435,47 @@ void TextRenderer::draw_text(const std::string& text, float x, float y,
     }
 }
 
+float TextRenderer::measure_width(const std::string& text, float scale) const {
+    float w = 0.0f;
+    float max_w = 0.0f;
+    for (char c : text) {
+        if (c == '\n') {
+            max_w = std::max(max_w, w);
+            w = 0.0f;
+            continue;
+        }
+        if (c < FIRST_CHAR || c >= FIRST_CHAR + CHAR_COUNT) continue;
+        w += glyphs_[c - FIRST_CHAR].advance * scale;
+    }
+    return std::max(max_w, w);
+}
+
+void TextRenderer::draw_anchored(const std::string& text, Anchor anchor,
+                                 float offset_x, float offset_y,
+                                 const glm::vec3& color, float scale) {
+    float w = static_cast<float>(swapchain_.extent().width);
+    float h = static_cast<float>(swapchain_.extent().height);
+    float tw = measure_width(text, scale);
+    float th = line_height_ * scale;
+
+    float x = 0.0f, y = 0.0f;
+    switch (anchor) {
+        case Anchor::TopLeft:      x = offset_x;            y = offset_y;          break;
+        case Anchor::TopCenter:    x = (w - tw) * 0.5f;     y = offset_y;          break;
+        case Anchor::TopRight:     x = w - tw - offset_x;   y = offset_y;          break;
+        case Anchor::CenterLeft:   x = offset_x;            y = (h - th) * 0.5f;   break;
+        case Anchor::Center:       x = (w - tw) * 0.5f;     y = (h - th) * 0.5f;   break;
+        case Anchor::CenterRight:  x = w - tw - offset_x;   y = (h - th) * 0.5f;   break;
+        case Anchor::BottomLeft:   x = offset_x;            y = h - th - offset_y; break;
+        case Anchor::BottomCenter: x = (w - tw) * 0.5f;     y = h - th - offset_y; break;
+        case Anchor::BottomRight:  x = w - tw - offset_x;   y = h - th - offset_y; break;
+    }
+
+    // draw_text positions glyphs relative to the baseline that sits below the
+    // cursor row, so add line_height to get a tight top-edge anchor.
+    draw_text(text, x, y + th, color, scale);
+}
+
 void TextRenderer::render(VkCommandBuffer cmd) {
     if (vertices_.empty()) return;
 

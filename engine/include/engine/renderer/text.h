@@ -28,6 +28,23 @@ public:
     void draw_text(const std::string& text, float x, float y,
                    const glm::vec3& color = glm::vec3(1.0f), float scale = 1.0f);
 
+    // 9-way HUD anchor relative to the swapchain extent. The text origin is
+    // shifted so the string's bounding box snaps to the requested edge/corner;
+    // `offset_x` / `offset_y` then nudge inward (or outward) in pixels.
+    enum class Anchor {
+        TopLeft,    TopCenter,    TopRight,
+        CenterLeft, Center,       CenterRight,
+        BottomLeft, BottomCenter, BottomRight,
+    };
+    void draw_anchored(const std::string& text, Anchor anchor,
+                       float offset_x = 16.0f, float offset_y = 16.0f,
+                       const glm::vec3& color = glm::vec3(1.0f),
+                       float scale = 1.0f);
+
+    // measure a string's width in pixels at the given scale (height = line_height_ * scale)
+    float measure_width(const std::string& text, float scale = 1.0f) const;
+    float line_height(float scale = 1.0f) const { return line_height_ * scale; }
+
     // record draw commands — call inside the render pass
     void render(VkCommandBuffer cmd);
 

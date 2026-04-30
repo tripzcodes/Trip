@@ -583,12 +583,27 @@ int main() {
             // game state overlays (menu, pause, ...)
             state_machine.render_imgui(gctx);
 
-            // queue in-game text
+            // HUD: state name top-right, position bottom-left, NPC count top-left
             auto cam_p = camera.position();
             char pos_buf[128];
             snprintf(pos_buf, sizeof(pos_buf), "%.0f, %.0f, %.0f", cam_p.x, cam_p.y, cam_p.z);
-            float win_h = static_cast<float>(swapchain.extent().height);
-            text.draw_text(pos_buf, 10, win_h - 30, {0.8f, 0.8f, 0.8f}, 0.8f);
+            text.draw_anchored(pos_buf,
+                engine::TextRenderer::Anchor::BottomLeft,
+                10.0f, 10.0f, {0.8f, 0.8f, 0.8f}, 0.8f);
+
+            const char* state_name = state_machine.top()
+                ? state_machine.top()->name() : "—";
+            text.draw_anchored(state_name,
+                engine::TextRenderer::Anchor::TopRight,
+                16.0f, 16.0f, {0.95f, 0.95f, 0.95f}, 0.9f);
+
+            uint32_t npc_count = 0;
+            for (auto _e : scene.view<engine::AgentComponent>()) { (void)_e; npc_count++; }
+            char npc_buf[64];
+            snprintf(npc_buf, sizeof(npc_buf), "NPCs: %u", npc_count);
+            text.draw_anchored(npc_buf,
+                engine::TextRenderer::Anchor::TopLeft,
+                16.0f, 16.0f, {0.85f, 0.85f, 0.85f}, 0.85f);
 
             renderer.begin_frame();
             renderer.render(camera, gui, &text);

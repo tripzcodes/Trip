@@ -84,6 +84,12 @@ per-entity inspectors without engine code referencing game types.
 
 `Game state machine` · stack of `GameState`s with `enter / update / exit / render_imgui` hooks; `world_paused()` gates simulation while the renderer keeps drawing the frozen scene. Ships with Menu / Playing / Paused states
 
+`Action mapping` · `engine::ActionMap` binds names to GLFW keys (multiple keys per action), query `actions.held / pressed / released(input, "jump")` from anywhere. Game logic stops referring to `GLFW_KEY_*` directly; rebinds and controllers become a settings file edit later
+
+`Prefab registry` · `engine::PrefabRegistry::add(name, factory)` + `spawn(name, scene, pos)`. The editor's "+ Add Entity" menu auto-populates from registered prefabs; gameplay code drops the 8-line spawn boilerplate
+
+`HUD layer` · `TextRenderer::draw_anchored(text, Anchor::TopLeft, …)` — 9-way screen anchors with pixel offsets, plus `measure_width` / `line_height` for custom layout
+
 `Procedural sky` · analytic two-layer atmosphere with sun disc, sunset warmth, zenith/horizon blending
 
 `Day-night cycle` · time-of-day drives sun elevation + light intensity, sky colors follow sun angle
